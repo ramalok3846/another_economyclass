@@ -16,7 +16,9 @@ import {
   updateDoc, 
   addDoc, 
   query, 
-  arrayUnion
+  arrayUnion,
+  deleteDoc,
+  getDocs
 } from 'firebase/firestore';
 import { 
   GraduationCap, 
@@ -31,8 +33,10 @@ import {
   UserCircle,
   Users,
   ExternalLink,
-  Search,
-  RefreshCcw
+  RefreshCcw,
+  PlusCircle,
+  ChevronRight,
+  Info
 } from 'lucide-react';
 
 // --- Firebase 설정 ---
@@ -42,7 +46,6 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'another-economy-class-v3';
 
-// --- 초기 학생 데이터 ---
 const INITIAL_STUDENTS = [
   { id: "1", name: "강유주", gender: "여", num: "01" },
   { id: "2", name: "고윤서", gender: "여", num: "02" },
@@ -70,6 +73,11 @@ const INITIAL_STUDENTS = [
   { id: "24", name: "허단", gender: "남", num: "24" }
 ];
 
+const SAVINGS_PRODUCTS = [
+  { id: 'daily_4', name: '당일 예금', period: '24시간', rate: '4%', desc: '가장 빠르고 안전한 수익' },
+  { id: 'event_1.5', name: '대박 예금(이벤트)', period: '1분', rate: '1.5%', desc: '단 2일간의 특별한 기회!' }
+];
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [loginMode, setLoginMode] = useState('student');
@@ -82,6 +90,28 @@ export default function App() {
   const [currentUserData, setCurrentUserData] = useState(null);
   const [themeColor, setThemeColor] = useState('#6366f1');
 
+  // 배너 슬라이드 상태
+  const [bannerIndex, setBannerIndex] = useState(0);
+  const banners = [
+    {
+      title: "📢 경제교실 이름 공모전(1차) 행사 진행 중!",
+      desc: "여러분의 창의적인 아이디어를 기다립니다. 클릭하여 참여하세요.",
+      link: "https://naver.me/xQJAYc2r",
+      color: "from-pink-500 via-purple-500 to-indigo-600"
+    },
+    {
+      title: "🔥 단 2일간 1분에 1.5%짜리 대박 예금 가입 행사 곧 OPEN!",
+      desc: "정확히 48시간 동안만 실시되는 혜택! 은행에서 상세 정보를 확인하세요.",
+      link: null,
+      color: "from-orange-500 via-red-500 to-pink-600"
+    }
+  ];
+
+  // 은행 관련 상태
+  const [savingsForm, setSavingsForm] = useState({ productId: '', amount: '', name: '' });
+  const [mySavings, setMySavings] = useState([]);
+
+  // 관리자 도구 상태
   const [fineForm, setFineForm] = useState({ amount: '', reason: '', note: '' });
   const [issueForm, setIssueForm] = useState({ amount: '', reason: '' });
   const [selectedStudents, setSelectedStudents] = useState([]);
@@ -93,7 +123,38 @@ export default function App() {
 
   const idInputRef = useRef(null);
 
-  // 1. 필수: 인증 먼저 완료 (Rule 3 준수)
+  // 배너 타이머
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setBannerIndex((prev) => (prev + 1) % banners.length);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [banners.length]);
+
+  // 허단 학생 벌금 복구 로직 (최초 실행 시)
+  useEffect(() => {
+    if (!user) return;
+    const fixDanData = async () => {
+      const finesRef = collection(db, 'artifacts', appId, 'public', 'data', 'fines');
+      const q = await getDocs(finesRef);
+      q.forEach(async (d) => {
+        const data = d.data();
+        if (data.studentName === '허단' && data.amount === 10) {
+          // 벌금 기록 삭제
+          await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'fines', d.id));
+          // 잔액 복구
+          const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'students', '허단');
+          const sSnap = await getDoc(sRef);
+          if (sSnap.exists()) {
+             await updateDoc(sRef, { balance: (sSnap.data().balance || 0) + 10 });
+          }
+        }
+      });
+    };
+    fixDanData();
+  }, [user]);
+
+  // 1. 인증
   useEffect(() => {
     const initAuth = async () => {
       if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
@@ -109,7 +170,7 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // 2. 인증 후에만 데이터 불러오기 (Rule 3)
+  // 2. 데이터 불러오기
   useEffect(() => {
     if (!user) return;
 
@@ -120,42 +181,45 @@ export default function App() {
         INITIAL_STUDENTS.forEach(async (s) => {
           const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'students', s.name);
           await setDoc(sRef, {
-            uid: s.name,
-            name: s.name,
-            id: s.name,
-            pw: `67${s.num}`,
-            num: s.num,
-            gender: s.gender,
-            balance: 1000,
-            role: 'student',
-            themeColor: '#6366f1',
-            isReset: false,
-            history: []
+            uid: s.name, name: s.name, id: s.name, pw: `67${s.num}`, num: s.num,
+            gender: s.gender, balance: 1000, role: 'student', themeColor: '#6366f1',
+            isReset: false, history: []
           });
         });
       }
       snapshot.forEach(doc => { data[doc.id] = doc.data(); });
       setStudents(data);
-    }, (err) => console.error("Students error:", err));
+    });
 
     const finesRef = collection(db, 'artifacts', appId, 'public', 'data', 'fines');
     const unsubFines = onSnapshot(finesRef, (snapshot) => {
       const list = [];
       snapshot.forEach(doc => { list.push({ id: doc.id, ...doc.data() }); });
       setFines(list.sort((a,b) => b.timestamp - a.timestamp));
-    }, (err) => console.error("Fines error:", err));
+    });
 
     return () => { unsubStudents(); unsubFines(); };
   }, [user]);
 
-  // 3. 아이디 칸 자동 포커스 (깜빡임 유지)
+  // 내 예금 불러오기
+  useEffect(() => {
+    if (!user || !currentUserData || currentUserData.role === 'admin') return;
+    const savingsRef = collection(db, 'artifacts', appId, 'users', currentUserData.uid, 'savings');
+    const unsubSavings = onSnapshot(savingsRef, (snapshot) => {
+      const list = [];
+      snapshot.forEach(doc => { list.push({ id: doc.id, ...doc.data() }); });
+      setMySavings(list);
+    });
+    return () => unsubSavings();
+  }, [user, currentUserData]);
+
+  // 자동 포커스
   useEffect(() => {
     if (!currentUserData && idInputRef.current) {
       idInputRef.current.focus();
     }
   }, [currentUserData, loginMode]);
 
-  // 포커스 해제 방지 로직 (클릭 시에도 다시 포커스)
   const maintainFocus = () => {
     if (!currentUserData && idInputRef.current) {
       idInputRef.current.focus();
@@ -165,7 +229,8 @@ export default function App() {
   const handleLogin = (e) => {
     if (e) e.preventDefault();
     if (loginMode === 'admin') {
-      if (loginId === 'manager1' && loginPw === 'ramalok*') {
+      // 관리자 로그인 로직 강화
+      if (loginId.trim() === 'manager1' && loginPw.trim() === 'ramalok*') {
         setCurrentUserData({ uid: 'admin_root', name: '관리자', role: 'admin' });
         setActiveTab('home');
         setLoginId('');
@@ -178,11 +243,7 @@ export default function App() {
       const matched = studentKeys.find(k => students[k].id === loginId && students[k].pw === loginPw);
       
       if (matched) {
-        const sData = students[matched];
-        if (sData.isReset) {
-          alert(`${sData.name} 님의 비밀번호가 관리자에 의해 초기화되었습니다.\n초기 비밀번호 : 67${sData.num} 로 로그인해 주십시오.`);
-        }
-        setCurrentUserData(sData);
+        setCurrentUserData(students[matched]);
         setActiveTab('home');
         setLoginId('');
         setLoginPw('');
@@ -192,6 +253,34 @@ export default function App() {
     }
   };
 
+  const joinSavings = async () => {
+    const amount = parseInt(savingsForm.amount);
+    if (!savingsForm.productId || isNaN(amount) || !savingsForm.name) return alert("예금 상품, 명칭, 금액을 모두 입력하세요.");
+    if (amount > (students[currentUserData.uid]?.balance || 0)) return alert("잔액이 부족합니다.");
+
+    const product = SAVINGS_PRODUCTS.find(p => p.id === savingsForm.productId);
+    const dateStr = new Date().toLocaleString();
+
+    // 1. 잔액 차감
+    const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'students', currentUserData.uid);
+    await updateDoc(sRef, {
+      balance: students[currentUserData.uid].balance - amount,
+      history: arrayUnion({ type: '차감', amount, reason: `예금 가입: ${savingsForm.name}`, date: dateStr })
+    });
+
+    // 2. 예금 데이터 추가
+    await addDoc(collection(db, 'artifacts', appId, 'users', currentUserData.uid, 'savings'), {
+      ...product,
+      accountName: savingsForm.name,
+      amount: amount,
+      startDate: dateStr,
+      timestamp: Date.now()
+    });
+
+    alert("예금 가입이 완료되었습니다!");
+    setSavingsForm({ productId: '', amount: '', name: '' });
+  };
+
   const submitFine = async () => {
     if (selectedStudents.length === 0 || !fineForm.amount) return alert("대상과 금액을 확인하세요.");
     const amount = parseInt(fineForm.amount);
@@ -199,12 +288,9 @@ export default function App() {
     
     for (const sId of selectedStudents) {
       const fineData = {
-        studentId: sId,
-        studentName: students[sId].name,
-        amount,
-        reason: fineForm.reason || '규칙 위반',
-        timestamp: Date.now(),
-        date: dateStr
+        studentId: sId, studentName: students[sId].name,
+        amount, reason: fineForm.reason || '규칙 위반',
+        timestamp: Date.now(), date: dateStr
       };
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'fines'), fineData);
       const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'students', sId);
@@ -213,7 +299,7 @@ export default function App() {
         history: arrayUnion({ type: '차감', amount, reason: `벌금: ${fineData.reason}`, date: dateStr })
       });
     }
-    alert("벌금 부과가 완료되었습니다.");
+    alert("벌금 부과 완료.");
     setFineForm({ amount: '', reason: '', note: '' });
     setSelectedStudents([]);
   };
@@ -230,41 +316,9 @@ export default function App() {
         history: arrayUnion({ type: '지급', amount, reason: issueForm.reason || '기타 지급', date: dateStr })
       });
     }
-    alert(`${selectedStudents.length}명에게 ${amount}G 발행 완료!`);
+    alert("화폐 발행 완료.");
     setIssueForm({ amount: '', reason: '' });
     setSelectedStudents([]);
-  };
-
-  const updateProfile = async () => {
-    if (newProfileData.pw && (newProfileData.pw.length < 4 || newProfileData.pw.includes(currentUserData.name))) {
-      return alert("비밀번호는 4자 이상이어야 하며, 본인의 이름을 포함할 수 없습니다.");
-    }
-    const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'students', currentUserData.uid);
-    const updates = {};
-    if (newProfileData.id) updates.id = newProfileData.id;
-    if (newProfileData.pw) {
-      updates.pw = newProfileData.pw;
-      updates.isReset = false;
-    }
-    await updateDoc(sRef, updates);
-    alert("정보가 성공적으로 변경되었습니다.");
-    setIsPwVerified(false);
-    setNewProfileData({ id: '', pw: '' });
-  };
-
-  const resetStudentPw = async (sId) => {
-    const s = students[sId];
-    const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'students', sId);
-    await updateDoc(sRef, {
-      pw: `67${s.num}`,
-      isReset: true
-    });
-    alert(`${s.name} 학생의 비밀번호가 67${s.num}으로 초기화되었습니다.`);
-  };
-
-  const loginAsStudent = (sId) => {
-    setCurrentUserData(students[sId]);
-    setActiveTab('home');
   };
 
   if (!user) return <div className="h-screen flex items-center justify-center bg-white text-indigo-600 font-bold">시스템 연결 중...</div>;
@@ -274,61 +328,25 @@ export default function App() {
       <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4" onClick={maintainFocus}>
         <div className="bg-white rounded-3xl shadow-2xl flex flex-col md:flex-row w-full max-w-5xl overflow-hidden min-h-[500px]">
           <div className="md:w-1/2 bg-gradient-to-br from-indigo-600 to-purple-700 p-12 text-white flex flex-col justify-center">
-            <div className="mb-8 bg-white/20 p-4 rounded-2xl w-fit">
-              <GraduationCap size={48} />
-            </div>
+            <div className="mb-8 bg-white/20 p-4 rounded-2xl w-fit"><GraduationCap size={48} /></div>
             <h1 className="text-4xl font-black mb-4">또다른<br />경제교실</h1>
             <p className="text-indigo-100 text-lg opacity-80">성공적인 교실 경제의 시작</p>
           </div>
-          
           <div className="md:w-1/2 p-12 flex flex-col justify-center">
             <div className="flex bg-gray-100 p-1 rounded-xl mb-8">
-              <button 
-                type="button"
-                onClick={(e) => { e.stopPropagation(); setLoginMode('student'); }}
-                className={`flex-1 py-3 rounded-lg font-bold transition-all ${loginMode === 'student' ? 'bg-white shadow text-indigo-600' : 'text-gray-400'}`}
-              >
-                학생
-              </button>
-              <button 
-                type="button"
-                onClick={(e) => { e.stopPropagation(); setLoginMode('admin'); }}
-                className={`flex-1 py-3 rounded-lg font-bold transition-all ${loginMode === 'admin' ? 'bg-white shadow text-indigo-600' : 'text-gray-400'}`}
-              >
-                관리자
-              </button>
+              <button type="button" onClick={() => setLoginMode('student')} className={`flex-1 py-3 rounded-lg font-bold transition-all ${loginMode === 'student' ? 'bg-white shadow text-indigo-600' : 'text-gray-400'}`}>학생</button>
+              <button type="button" onClick={() => setLoginMode('admin')} className={`flex-1 py-3 rounded-lg font-bold transition-all ${loginMode === 'admin' ? 'bg-white shadow text-indigo-600' : 'text-gray-400'}`}>관리자</button>
             </div>
-
             <form onSubmit={handleLogin} className="space-y-6">
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-2">아이디</label>
-                <input 
-                  ref={idInputRef}
-                  type="text"
-                  value={loginId}
-                  onChange={(e) => setLoginId(e.target.value)}
-                  className="w-full p-4 border-2 border-gray-100 rounded-xl focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 outline-none transition-all font-bold"
-                  placeholder="아이디를 입력하세요"
-                  required
-                />
+                <input ref={idInputRef} type="text" value={loginId} onChange={(e) => setLoginId(e.target.value)} className="w-full p-4 border-2 border-gray-100 rounded-xl focus:border-indigo-500 outline-none font-bold" placeholder="아이디 입력" required />
               </div>
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-2">비밀번호</label>
-                <input 
-                  type="password"
-                  value={loginPw}
-                  onChange={(e) => setLoginPw(e.target.value)}
-                  className="w-full p-4 border-2 border-gray-100 rounded-xl focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 outline-none transition-all font-bold"
-                  placeholder="••••••••"
-                  required
-                />
+                <input type="password" value={loginPw} onChange={(e) => setLoginPw(e.target.value)} className="w-full p-4 border-2 border-gray-100 rounded-xl focus:border-indigo-500 outline-none font-bold" placeholder="••••••••" required />
               </div>
-              <button 
-                type="submit"
-                className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-lg shadow-indigo-200 transition-all"
-              >
-                로그인
-              </button>
+              <button type="submit" className="w-full py-4 bg-indigo-600 text-white font-black rounded-xl shadow-lg">로그인</button>
             </form>
           </div>
         </div>
@@ -341,14 +359,22 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 pb-20">
-      <a 
-        href="https://naver.me/xQJAYc2r" 
-        target="_blank" 
-        rel="noopener noreferrer"
-        className="block bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-600 p-3 text-center text-white font-bold"
-      >
-        📢 경제교실 이름 공모전(1차) 행사 진행 중! [클릭 시 링크 연결]
-      </a>
+      {/* 자동 슬라이드 배너 */}
+      <div className={`transition-all duration-1000 bg-gradient-to-r ${banners[bannerIndex].color} p-4 text-white shadow-lg`}>
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+          <div>
+            <h4 className="font-black text-lg md:text-xl flex items-center gap-2">
+              <Info size={20} /> {banners[bannerIndex].title}
+            </h4>
+            <p className="text-sm opacity-90 font-medium">{banners[bannerIndex].desc}</p>
+          </div>
+          {banners[bannerIndex].link && (
+            <a href={banners[bannerIndex].link} target="_blank" rel="noopener noreferrer" className="px-6 py-2 bg-white text-slate-900 rounded-full font-black text-sm hover:scale-105 transition-transform flex items-center gap-2">
+              참여하기 <ChevronRight size={16} />
+            </a>
+          )}
+        </div>
+      </div>
 
       <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b px-6 py-4 flex justify-between items-center">
         <div className="flex items-center gap-3">
@@ -357,7 +383,6 @@ export default function App() {
           </div>
           <span className="text-xl font-black">또다른 경제교실</span>
         </div>
-
         <nav className="hidden md:flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
           {[
             { id: 'home', label: '대시보드', icon: ChartPie },
@@ -366,25 +391,17 @@ export default function App() {
             ...(isAdmin ? [{ id: 'issue', label: '발행', icon: Banknote }] : []),
             { id: 'settings', label: '설정', icon: Settings }
           ].map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all ${activeTab === tab.id ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}
-            >
-              <tab.icon size={18} />
-              {tab.label}
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all ${activeTab === tab.id ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>
+              <tab.icon size={18} /> {tab.label}
             </button>
           ))}
         </nav>
-
         <div className="flex items-center gap-4">
           <div className="text-right">
             <div className="text-xs text-slate-400 font-bold tracking-wider">{isAdmin ? 'ADMIN' : 'STUDENT'}</div>
             <div className="font-bold">{myData.name}님</div>
           </div>
-          <button onClick={() => setCurrentUserData(null)} className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-colors">
-            <LogOut size={22} />
-          </button>
+          <button onClick={() => setCurrentUserData(null)} className="p-2 text-red-500 hover:bg-red-50 rounded-xl"><LogOut size={22} /></button>
         </div>
       </header>
 
@@ -392,62 +409,32 @@ export default function App() {
         {activeTab === 'home' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 bg-white rounded-3xl p-8 shadow-sm border border-slate-100 relative overflow-hidden">
-               <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
-                 <Coins size={120} />
-               </div>
+               <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none"><Coins size={120} /></div>
                <h2 className="text-slate-400 font-bold mb-1">내 자산</h2>
-               <div className="text-5xl font-black mb-8">
-                 {myData.balance?.toLocaleString() || 0} <span className="text-2xl text-slate-400">G</span>
-               </div>
+               <div className="text-5xl font-black mb-8">{myData.balance?.toLocaleString() || 0} <span className="text-2xl text-slate-400">G</span></div>
                <div className="grid grid-cols-3 gap-4">
-                 <div className="bg-slate-50 p-4 rounded-2xl">
-                   <div className="text-xs text-slate-400 font-bold">현금</div>
-                   <div className="font-bold">{(myData.balance || 0).toLocaleString()}G</div>
-                 </div>
-                 <div className="bg-slate-50 p-4 rounded-2xl opacity-50">
-                   <div className="text-xs text-slate-400 font-bold">예금</div>
-                   <div className="font-bold">0G</div>
-                 </div>
-                 <div className="bg-slate-50 p-4 rounded-2xl opacity-50">
-                   <div className="text-xs text-slate-400 font-bold">증권</div>
-                   <div className="font-bold">0G</div>
-                 </div>
+                 <div className="bg-slate-50 p-4 rounded-2xl"><div className="text-xs text-slate-400 font-bold">현금</div><div className="font-bold">{(myData.balance || 0).toLocaleString()}G</div></div>
+                 <div className="bg-slate-50 p-4 rounded-2xl"><div className="text-xs text-slate-400 font-bold">예금</div><div className="font-bold">{(mySavings.reduce((a,b)=>a+b.amount,0)).toLocaleString()}G</div></div>
+                 <div className="bg-slate-50 p-4 rounded-2xl opacity-50"><div className="text-xs text-slate-400 font-bold">증권</div><div className="font-bold">0G</div></div>
                </div>
             </div>
-
             <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100">
-              <h3 className="font-black text-lg mb-6 flex items-center gap-2">
-                <History className="text-indigo-500" size={20} /> 오늘 통계
-              </h3>
+              <h3 className="font-black text-lg mb-6 flex items-center gap-2"><History className="text-indigo-500" size={20} /> 통계</h3>
               <div className="space-y-4">
-                <div className="flex justify-between items-center p-4 bg-indigo-50 rounded-2xl">
-                   <span className="text-indigo-600 font-bold">전체 발행액</span>
-                   <span className="font-black">{(Object.values(students).reduce((a,b)=>a+(b.balance||0), 0)).toLocaleString()}G</span>
-                </div>
-                <div className="flex justify-between items-center p-4 bg-red-50 rounded-2xl">
-                   <span className="text-red-600 font-bold">누적 벌금액</span>
-                   <span className="font-black">{(fines.reduce((a,b)=>a+b.amount, 0)).toLocaleString()}G</span>
-                </div>
+                <div className="flex justify-between items-center p-4 bg-indigo-50 rounded-2xl"><span className="text-indigo-600 font-bold">전체 발행액</span><span className="font-black">{(Object.values(students).reduce((a,b)=>a+(b.balance||0), 0)).toLocaleString()}G</span></div>
+                <div className="flex justify-between items-center p-4 bg-red-50 rounded-2xl"><span className="text-red-600 font-bold">누적 벌금액</span><span className="font-black">{(fines.reduce((a,b)=>a+b.amount, 0)).toLocaleString()}G</span></div>
               </div>
             </div>
-
             <div className="lg:col-span-3 bg-white rounded-3xl p-8 shadow-sm border border-slate-100">
                <h3 className="font-black text-lg mb-6">최근 내역</h3>
                <div className="space-y-3">
                  {myData.history?.slice(-5).reverse().map((h, i) => (
                    <div key={i} className="flex items-center justify-between p-4 hover:bg-slate-50 rounded-2xl transition-all">
                      <div className="flex items-center gap-4">
-                       <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${h.type === '지급' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                         {h.type === '지급' ? '↑' : '↓'}
-                       </div>
-                       <div>
-                         <div className="font-bold">{h.reason}</div>
-                         <div className="text-xs text-slate-400">{h.date}</div>
-                       </div>
+                       <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${h.type === '지급' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>{h.type === '지급' ? '↑' : '↓'}</div>
+                       <div><div className="font-bold">{h.reason}</div><div className="text-xs text-slate-400">{h.date}</div></div>
                      </div>
-                     <div className={`font-black ${h.type === '지급' ? 'text-green-600' : 'text-red-600'}`}>
-                       {h.type === '지급' ? '+' : '-'}{h.amount.toLocaleString()}G
-                     </div>
+                     <div className={`font-black ${h.type === '지급' ? 'text-green-600' : 'text-red-600'}`}>{h.type === '지급' ? '+' : '-'}{h.amount.toLocaleString()}G</div>
                    </div>
                  ))}
                </div>
@@ -455,55 +442,97 @@ export default function App() {
           </div>
         )}
 
-        {activeTab === 'fine' && (
+        {activeTab === 'bank' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <div className="bg-white rounded-3xl p-8 shadow-sm border">
-               <h3 className="text-2xl font-black mb-8 text-red-600 flex items-center gap-2">
-                 <ShieldAlert /> 벌금 부과
-               </h3>
+               <h3 className="text-2xl font-black mb-8 text-indigo-600 flex items-center gap-2"><PlusCircle /> 예금 가입</h3>
                <div className="space-y-6">
                  <div>
-                   <label className="block text-sm font-bold text-slate-500 mb-2">학생 선택 ({selectedStudents.length}명)</label>
-                   <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-48 overflow-y-auto p-4 bg-slate-50 rounded-2xl">
-                     {Object.values(students).sort((a,b)=>parseInt(a.num)-parseInt(b.num)).map(s => (
+                   <label className="block text-sm font-bold text-slate-500 mb-2">상품 선택</label>
+                   <div className="grid grid-cols-1 gap-3">
+                     {SAVINGS_PRODUCTS.map(p => (
                        <button
-                         key={s.uid}
-                         onClick={() => setSelectedStudents(prev => prev.includes(s.uid) ? prev.filter(id => id !== s.uid) : [...prev, s.uid])}
-                         className={`p-2 rounded-xl text-xs font-bold border-2 transition-all ${selectedStudents.includes(s.uid) ? 'bg-red-500 border-red-500 text-white' : 'bg-white border-slate-100 text-slate-600'}`}
+                         key={p.id}
+                         onClick={() => setSavingsForm({...savingsForm, productId: p.id})}
+                         className={`p-4 rounded-2xl border-2 text-left transition-all ${savingsForm.productId === p.id ? 'border-indigo-600 bg-indigo-50' : 'border-slate-100 hover:border-indigo-200'}`}
                        >
-                         {s.name}
+                         <div className="flex justify-between items-center">
+                           <span className="font-black text-lg">{p.name}</span>
+                           <span className="bg-indigo-600 text-white px-3 py-1 rounded-full text-xs font-bold">{p.rate} 이자</span>
+                         </div>
+                         <div className="text-sm text-slate-500 font-bold">{p.period} 만기 | {p.desc}</div>
                        </button>
                      ))}
                    </div>
                  </div>
-                 <div className="grid grid-cols-2 gap-4">
-                    <input 
-                      type="number"
-                      value={fineForm.amount}
-                      onChange={(e) => setFineForm({...fineForm, amount: e.target.value})}
-                      className="p-4 bg-slate-50 rounded-2xl font-bold outline-none"
-                      placeholder="금액 (G)"
-                    />
-                    <input 
-                      type="text"
-                      value={fineForm.reason}
-                      onChange={(e) => setFineForm({...fineForm, reason: e.target.value})}
-                      className="p-4 bg-slate-50 rounded-2xl font-bold outline-none"
-                      placeholder="사유"
-                    />
-                 </div>
-                 <button onClick={submitFine} className="w-full py-5 bg-red-600 text-white font-black rounded-2xl shadow-lg">부과 확정</button>
+                 <input type="text" value={savingsForm.name} onChange={(e)=>setSavingsForm({...savingsForm, name: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500" placeholder="예금통장 별칭 입력 (예: 내 비상금)" />
+                 <input type="number" value={savingsForm.amount} onChange={(e)=>setSavingsForm({...savingsForm, amount: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500" placeholder="가입 금액 (G)" />
+                 <button onClick={joinSavings} className="w-full py-5 bg-indigo-600 text-white font-black rounded-2xl shadow-lg">예금 가입하기</button>
                </div>
             </div>
+            <div className="bg-white rounded-3xl p-8 shadow-sm border">
+              <h3 className="font-black text-lg mb-6">내 예금 현황</h3>
+              <div className="space-y-4">
+                {mySavings.length === 0 ? (
+                  <div className="text-center py-20 text-slate-300 font-bold">가입된 예금이 없습니다.</div>
+                ) : mySavings.map(s => (
+                  <div key={s.id} className="p-5 bg-slate-50 rounded-2xl border flex justify-between items-center">
+                    <div>
+                      <div className="font-black text-indigo-600">{s.accountName}</div>
+                      <div className="text-xs text-slate-400 font-bold">{s.name} ({s.rate}) | {s.startDate} 가입</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-black text-lg">{s.amount.toLocaleString()} G</div>
+                      <div className="text-[10px] text-slate-400">만기 시 자동 해지</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'fine' && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {isAdmin ? (
+              <div className="bg-white rounded-3xl p-8 shadow-sm border">
+                <h3 className="text-2xl font-black mb-8 text-red-600 flex items-center gap-2"><ShieldAlert /> 벌금 부과</h3>
+                <div className="space-y-6">
+                  <div>
+                    <label className="block text-sm font-bold text-slate-500 mb-2">학생 선택 ({selectedStudents.length}명)</label>
+                    <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-48 overflow-y-auto p-4 bg-slate-50 rounded-2xl">
+                      {Object.values(students).sort((a,b)=>parseInt(a.num)-parseInt(b.num)).map(s => (
+                        <button key={s.uid} onClick={() => setSelectedStudents(prev => prev.includes(s.uid) ? prev.filter(id => id !== s.uid) : [...prev, s.uid])} className={`p-2 rounded-xl text-xs font-bold border-2 transition-all ${selectedStudents.includes(s.uid) ? 'bg-red-500 border-red-500 text-white' : 'bg-white border-slate-100 text-slate-600'}`}>{s.name}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <input type="number" value={fineForm.amount} onChange={(e) => setFineForm({...fineForm, amount: e.target.value})} className="p-4 bg-slate-50 rounded-2xl font-bold outline-none" placeholder="금액 (G)" />
+                    <input type="text" value={fineForm.reason} onChange={(e) => setFineForm({...fineForm, reason: e.target.value})} className="p-4 bg-slate-50 rounded-2xl font-bold outline-none" placeholder="사유" />
+                  </div>
+                  <button onClick={submitFine} className="w-full py-5 bg-red-600 text-white font-black rounded-2xl">부과 확정</button>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-white rounded-3xl p-8 shadow-sm border">
+                <h3 className="text-2xl font-black mb-8 text-red-600">내 벌금 내역</h3>
+                <div className="space-y-3">
+                  {fines.filter(f => f.studentId === currentUserData.uid).map((f, i) => (
+                    <div key={i} className="p-5 bg-red-50 rounded-2xl border-l-4 border-red-500 flex justify-between">
+                      <div><div className="font-black text-red-700">{f.reason}</div><div className="text-xs text-slate-400 font-bold">{f.date}</div></div>
+                      <div className="font-black text-red-600">-{f.amount.toLocaleString()}G</div>
+                    </div>
+                  ))}
+                  {fines.filter(f => f.studentId === currentUserData.uid).length === 0 && <div className="text-center py-20 text-slate-300 font-bold">깨끗한 경제 생활! 받은 벌금이 없습니다.</div>}
+                </div>
+              </div>
+            )}
             <div className="bg-white rounded-3xl p-8 shadow-sm border h-fit">
-              <h3 className="font-black text-lg mb-6">부과 기록</h3>
+              <h3 className="font-black text-lg mb-6">전체 벌금 기록</h3>
               <div className="space-y-3 max-h-[500px] overflow-y-auto">
                 {fines.map((f, i) => (
                   <div key={i} className="p-4 bg-slate-50 rounded-xl border flex justify-between">
-                    <div>
-                      <div className="font-black">{f.studentName}</div>
-                      <div className="text-xs text-slate-400">{f.reason} | {f.date}</div>
-                    </div>
+                    <div><div className="font-black">{f.studentName}</div><div className="text-xs text-slate-400">{f.reason} | {f.date}</div></div>
                     <div className="text-red-600 font-black">-{f.amount.toLocaleString()}G</div>
                   </div>
                 ))}
@@ -514,36 +543,16 @@ export default function App() {
 
         {activeTab === 'issue' && isAdmin && (
           <div className="max-w-3xl mx-auto bg-white rounded-3xl p-8 shadow-sm border">
-            <h3 className="text-2xl font-black mb-8 text-indigo-600 flex items-center gap-2">
-              <Banknote /> 화폐 발행
-            </h3>
+            <h3 className="text-2xl font-black mb-8 text-indigo-600 flex items-center gap-2"><Banknote /> 화폐 발행</h3>
             <div className="space-y-8">
                <div className="flex flex-wrap gap-2 p-5 bg-slate-50 rounded-2xl border-2 border-dashed">
                   {Object.values(students).sort((a,b)=>parseInt(a.num)-parseInt(b.num)).map(s => (
-                     <button
-                       key={s.uid}
-                       onClick={() => setSelectedStudents(prev => prev.includes(s.uid) ? prev.filter(id => id !== s.uid) : [...prev, s.uid])}
-                       className={`px-4 py-2 rounded-xl text-sm font-bold border transition-all ${selectedStudents.includes(s.uid) ? 'bg-indigo-600 text-white' : 'bg-white text-slate-400'}`}
-                     >
-                       {s.name}
-                     </button>
+                     <button key={s.uid} onClick={() => setSelectedStudents(prev => prev.includes(s.uid) ? prev.filter(id => id !== s.uid) : [...prev, s.uid])} className={`px-4 py-2 rounded-xl text-sm font-bold border transition-all ${selectedStudents.includes(s.uid) ? 'bg-indigo-600 text-white' : 'bg-white text-slate-400'}`}>{s.name}</button>
                   ))}
                </div>
                <div className="grid grid-cols-2 gap-4">
-                  <input 
-                    type="number"
-                    value={issueForm.amount}
-                    onChange={(e) => setIssueForm({...issueForm, amount: e.target.value})}
-                    className="p-5 bg-slate-50 rounded-2xl font-black text-xl outline-none"
-                    placeholder="금액"
-                  />
-                  <input 
-                    type="text"
-                    value={issueForm.reason}
-                    onChange={(e) => setIssueForm({...issueForm, reason: e.target.value})}
-                    className="p-5 bg-slate-50 rounded-2xl font-black text-xl outline-none"
-                    placeholder="지급 사유"
-                  />
+                  <input type="number" value={issueForm.amount} onChange={(e) => setIssueForm({...issueForm, amount: e.target.value})} className="p-5 bg-slate-50 rounded-2xl font-black text-xl outline-none" placeholder="금액" />
+                  <input type="text" value={issueForm.reason} onChange={(e) => setIssueForm({...issueForm, reason: e.target.value})} className="p-5 bg-slate-50 rounded-2xl font-black text-xl outline-none" placeholder="지급 사유" />
                </div>
                <button onClick={handleIssueCurrency} className="w-full py-6 bg-indigo-600 text-white font-black text-xl rounded-2xl">발행 승인</button>
             </div>
@@ -562,79 +571,44 @@ export default function App() {
                       <span>비밀번호</span>
                       {!isPwVerified ? (
                         <div className="flex gap-2">
-                          <input 
-                            type="password" 
-                            value={pwInputForCheck}
-                            onChange={(e) => setPwInputForCheck(e.target.value)}
-                            className="w-20 p-1 border rounded text-xs" 
-                            placeholder="입력"
-                          />
+                          <input type="password" value={pwInputForCheck} onChange={(e) => setPwInputForCheck(e.target.value)} className="w-20 p-1 border rounded text-xs" placeholder="입력" />
                           <button onClick={() => { if(pwInputForCheck === myData.pw) setIsPwVerified(true); else alert("불일치"); setPwInputForCheck(''); }} className="bg-slate-800 text-white px-2 py-1 rounded text-xs">확인</button>
                         </div>
-                      ) : <span className="text-indigo-600">{myData.pw}</span>}
+                      ) : <span className="text-indigo-600 font-bold">{myData.pw}</span>}
                     </div>
                  </div>
-
                  {isPwVerified && (
                    <div className="space-y-3 pt-4 border-t">
-                      <input 
-                        type="text" 
-                        placeholder="새 아이디" 
-                        value={newProfileData.id} 
-                        onChange={(e)=>setNewProfileData({...newProfileData, id: e.target.value})}
-                        className="w-full p-4 bg-slate-50 rounded-xl font-bold"
-                      />
-                      <input 
-                        type="password" 
-                        placeholder="새 비밀번호 (4자 이상)" 
-                        value={newProfileData.pw} 
-                        onChange={(e)=>setNewProfileData({...newProfileData, pw: e.target.value})}
-                        className="w-full p-4 bg-slate-50 rounded-xl font-bold"
-                      />
-                      <button onClick={updateProfile} className="w-full py-4 bg-black text-white font-bold rounded-xl">변경 저장</button>
+                      <input type="text" placeholder="새 아이디" value={newProfileData.id} onChange={(e)=>setNewProfileData({...newProfileData, id: e.target.value})} className="w-full p-4 bg-slate-50 rounded-xl font-bold outline-none border-2 border-transparent focus:border-indigo-500" />
+                      <input type="password" placeholder="새 비밀번호 (4자 이상)" value={newProfileData.pw} onChange={(e)=>setNewProfileData({...newProfileData, pw: e.target.value})} className="w-full p-4 bg-slate-50 rounded-xl font-bold outline-none border-2 border-transparent focus:border-indigo-500" />
+                      <button onClick={async () => {
+                        if (newProfileData.pw && (newProfileData.pw.length < 4 || newProfileData.pw.includes(currentUserData.name))) return alert("비밀번호 조건을 확인하세요.");
+                        const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'students', currentUserData.uid);
+                        await updateDoc(sRef, { id: newProfileData.id || myData.id, pw: newProfileData.pw || myData.pw });
+                        alert("정보가 성공적으로 변경되었습니다.");
+                        setIsPwVerified(false);
+                      }} className="w-full py-4 bg-black text-white font-bold rounded-xl">변경 저장</button>
                    </div>
-                 )}
-
-                 {!isAdmin && (
-                    <div className="pt-4 border-t">
-                      <label className="block text-sm font-bold text-slate-500 mb-2">테마 색상</label>
-                      <div className="flex gap-2">
-                        {['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#ef4444'].map(c => (
-                          <button 
-                            key={c} 
-                            onClick={async () => {
-                              setThemeColor(c);
-                              await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'students', myData.uid), { themeColor: c });
-                            }}
-                            className="w-8 h-8 rounded-full border-2 border-white shadow-sm" style={{ backgroundColor: c }}
-                          />
-                        ))}
-                      </div>
-                    </div>
                  )}
               </div>
             </div>
-
             {isAdmin && (
               <div className="bg-white rounded-3xl p-8 shadow-sm border">
                 <h3 className="text-xl font-black mb-6 flex items-center gap-2"><Users /> 학생 관리</h3>
-                <input 
-                  type="text" 
-                  placeholder="학생 검색" 
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full p-3 bg-slate-50 rounded-xl font-bold mb-4 outline-none"
-                />
+                <input type="text" placeholder="학생 검색" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full p-3 bg-slate-50 rounded-xl font-bold mb-4 outline-none" />
                 <div className="space-y-2 max-h-96 overflow-y-auto">
                   {Object.values(students).filter(s => s.name.includes(searchQuery)).sort((a,b)=>parseInt(a.num)-parseInt(b.num)).map(s => (
                     <div key={s.uid} className="p-3 bg-slate-50 rounded-xl flex justify-between items-center border">
                        <div>
                          <div className="font-black text-sm">{s.name} ({s.num}번)</div>
-                         <div className="text-[10px] text-slate-400">ID: {s.id} / PW: {s.pw}</div>
+                         <div className="text-[10px] text-slate-400">ID: {s.id} | PW: {s.pw}</div>
                        </div>
                        <div className="flex gap-1">
-                         <button onClick={() => resetStudentPw(s.uid)} className="p-2 text-orange-500 bg-white rounded-lg shadow-sm"><RefreshCcw size={14} /></button>
-                         <button onClick={() => loginAsStudent(s.uid)} className="p-2 text-indigo-600 bg-white rounded-lg shadow-sm"><ExternalLink size={14} /></button>
+                         <button onClick={async () => {
+                           const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'students', s.uid);
+                           await updateDoc(sRef, { pw: `67${s.num}`, isReset: true });
+                           alert(`${s.name} 비번 초기화 완료.`);
+                         }} className="p-2 text-orange-500 bg-white rounded-lg shadow-sm"><RefreshCcw size={14} /></button>
                        </div>
                     </div>
                   ))}
