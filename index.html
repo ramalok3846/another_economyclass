@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HH 경제교실 - 시스템</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap');
+        :root {
+            --primary-color: #8e44ad;
+            --primary-hover: #7d3c98;
+        }
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: #f0f2f5;
+        }
+        .text-primary { color: var(--primary-color); }
+        .bg-primary { background-color: var(--primary-color); }
+        .border-primary { border-color: var(--primary-color); }
+        .hover-bg-primary:hover { background-color: var(--primary-hover); }
+        
+        .student-card.selected {
+            border-color: var(--primary-color);
+            background-color: white;
+            box-shadow: 0 0 0 2px var(--primary-color);
+        }
+        .toggle-slide {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .dashboard-card {
+            background: white;
+            border-radius: 1.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            padding: 1.5rem;
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+
+    <!-- [1] 로그인 화면 -->
+    <div id="loginPage" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-100 px-4">
+        <div class="max-w-md w-full bg-white rounded-3xl shadow-2xl p-8 border border-gray-100">
+            <div class="text-center mb-8">
+                <div class="inline-block bg-primary p-3 rounded-2xl mb-4 transition-colors">
+                    <i class="fas fa-graduation-cap text-white text-3xl"></i>
+                </div>
+                <h1 class="text-2xl font-bold text-gray-800">HH 경제교실</h1>
+                <p class="text-gray-500 text-sm mt-1">로그인이 필요합니다</p>
+            </div>
+
+            <div class="relative bg-gray-100 p-1 rounded-xl mb-8 flex items-center">
+                <div id="toggleBg" class="absolute top-1 left-1 bottom-1 w-[calc(50%-4px)] bg-white rounded-lg shadow-sm toggle-slide"></div>
+                <button onclick="setLoginMode('admin')" class="relative z-10 flex-1 py-2 text-sm font-bold text-gray-800 transition">관리자</button>
+                <button onclick="setLoginMode('student')" class="relative z-10 flex-1 py-2 text-sm font-bold text-gray-400 transition">학생</button>
+            </div>
+
+            <div class="space-y-4">
+                <input type="text" id="loginId" class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-primary outline-none transition" placeholder="아이디">
+                <input type="password" id="loginPw" class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-primary outline-none transition" placeholder="비밀번호">
+                <button onclick="handleLogin()" class="w-full bg-primary text-white font-bold py-4 rounded-xl shadow-lg hover-bg-primary transition transform active:scale-95">
+                    로그인
+                </button>
+            </div>
+            <p id="loginError" class="text-red-500 text-xs mt-4 text-center hidden">정보가 올바르지 않습니다.</p>
+        </div>
+    </div>
+
+    <!-- [2] 비밀번호 변경 화면 -->
+    <div id="pwChangePage" class="fixed inset-0 z-[60] flex items-center justify-center bg-white px-4 hidden">
+        <div class="max-w-md w-full text-center">
+            <div class="w-20 h-20 bg-yellow-100 text-yellow-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                <i class="fas fa-key text-3xl"></i>
+            </div>
+            <h2 class="text-2xl font-bold text-gray-800 mb-2">보안 설정</h2>
+            <p class="text-gray-500 mb-8">최초 로그인 시 비밀번호를 변경해야 합니다.</p>
+            <div class="space-y-4">
+                <input type="password" id="newPw" class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-primary outline-none" placeholder="새 비밀번호">
+                <input type="password" id="confirmPw" class="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-primary outline-none" placeholder="비밀번호 확인">
+                <button onclick="completePwChange()" class="w-full bg-primary text-white font-bold py-4 rounded-xl transition shadow-lg">변경 완료</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- [3] 메인 어플리케이션 -->
+    <div id="mainContent" class="hidden">
+        <!-- 상단 내비게이션 -->
+        <nav class="bg-white shadow-sm border-b sticky top-0 z-40">
+            <div class="max-w-7xl mx-auto px-4 flex justify-between h-16 items-center">
+                <div class="flex items-center gap-8">
+                    <div class="flex items-center gap-2 cursor-pointer" onclick="switchTab('home')">
+                        <div class="bg-primary p-2 rounded-lg transition-colors"><i class="fas fa-graduation-cap text-white text-lg"></i></div>
+                        <span class="text-xl font-bold text-gray-800">HH 경제교실</span>
+                    </div>
+                    <div class="hidden md:flex space-x-6 text-gray-500 font-medium">
+                        <button onclick="switchTab('home')" class="nav-link hover:text-primary transition">대시보드</button>
+                        <button onclick="switchTab('bank')" class="nav-link hover:text-primary transition">은행</button>
+                        <button onclick="switchTab('shop')" class="nav-link hover:text-primary transition">상점</button>
+                        <button id="fineMenuBtn" onclick="switchTab('fine')" class="nav-link hover:text-primary transition">벌금</button>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div id="themePicker" class="hidden md:flex gap-1 mr-4">
+                        <button onclick="changeTheme('#8e44ad', '#7d3c98')" class="w-4 h-4 rounded-full bg-[#8e44ad]"></button>
+                        <button onclick="changeTheme('#3498db', '#2980b9')" class="w-4 h-4 rounded-full bg-[#3498db]"></button>
+                        <button onclick="changeTheme('#27ae60', '#219150')" class="w-4 h-4 rounded-full bg-[#27ae60]"></button>
+                    </div>
+                    <span id="userNameDisplay" class="font-bold text-gray-700">사용자 님</span>
+                    <button onclick="location.reload()" class="text-gray-400 hover:text-red-500 transition"><i class="fas fa-sign-out-alt"></i></button>
+                </div>
+            </div>
+        </nav>
+
+        <!-- (A) 홈 대시보드 화면 -->
+        <main id="homeTab" class="tab-content max-w-7xl mx-auto py-8 px-4 space-y-6">
+            <!-- 자산 요약 -->
+            <div class="bg-primary p-8 rounded-[2rem] text-white shadow-xl relative overflow-hidden transition-colors">
+                <div class="relative z-10">
+                    <p class="text-white/80 text-lg mb-1">내 자산</p>
+                    <h2 id="userBalance" class="text-4xl font-black mb-6">2,000G</h2>
+                    <div class="grid grid-cols-3 gap-4">
+                        <div class="bg-white/10 p-4 rounded-2xl">
+                            <p class="text-xs text-white/70 mb-1">현금</p>
+                            <p class="font-bold">2,000G</p>
+                        </div>
+                        <div class="bg-white/10 p-4 rounded-2xl">
+                            <p class="text-xs text-white/70 mb-1">예금</p>
+                            <p class="font-bold">0G</p>
+                        </div>
+                        <div class="bg-white/10 p-4 rounded-2xl">
+                            <p class="text-xs text-white/70 mb-1">증권</p>
+                            <p class="font-bold">0G</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="absolute -right-10 -bottom-10 opacity-10">
+                    <i class="fas fa-coins text-[15rem]"></i>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- 송금 및 내역 -->
+                <div class="md:col-span-2 space-y-6">
+                    <div class="dashboard-card">
+                        <h3 class="font-bold text-lg mb-4 flex items-center gap-2">
+                            <i class="fas fa-history text-primary transition-colors"></i> 최근 거래 내역
+                        </h3>
+                        <div id="historyList" class="space-y-3">
+                            <!-- 내역이 여기에 추가됨 -->
+                        </div>
+                    </div>
+                </div>
+                <!-- 통계 -->
+                <div class="space-y-6">
+                    <div class="dashboard-card">
+                        <h3 class="font-bold text-lg mb-4 flex items-center gap-2">
+                            <i class="fas fa-chart-pie text-primary transition-colors"></i> 오늘의 통계
+                        </h3>
+                        <div class="space-y-4 text-sm">
+                            <div class="flex justify-between p-3 bg-gray-50 rounded-xl">
+                                <span class="text-gray-500">지급된 총액</span>
+                                <span class="font-bold" id="totalPaid">48,000G</span>
+                            </div>
+                            <div class="flex justify-between p-3 bg-gray-50 rounded-xl">
+                                <span class="text-gray-500">오늘 징수한 벌금</span>
+                                <span class="font-bold text-red-500" id="totalFines">0G</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- (B) 은행 화면 (미구현 상태 대응) -->
+        <main id="bankTab" class="tab-content max-w-7xl mx-auto py-8 px-4 hidden">
+            <div class="dashboard-card text-center py-20">
+                <i class="fas fa-university text-5xl text-gray-300 mb-4"></i>
+                <h2 class="text-xl font-bold text-gray-500">은행 서비스 준비 중입니다.</h2>
+            </div>
+        </main>
+
+        <!-- (C) 상점 화면 (미구현 상태 대응) -->
+        <main id="shopTab" class="tab-content max-w-7xl mx-auto py-8 px-4 hidden">
+            <div class="dashboard-card text-center py-20">
+                <i class="fas fa-store text-5xl text-gray-300 mb-4"></i>
+                <h2 class="text-xl font-bold text-gray-500">상점 서비스 준비 중입니다.</h2>
+            </div>
+        </main>
+
+        <!-- (D) 벌금 관리 화면 -->
+        <main id="fineTab" class="tab-content max-w-7xl mx-auto py-8 px-4 hidden">
+            <div id="adminFineUI" class="hidden space-y-8">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-2xl font-bold flex items-center gap-2"><i class="fas fa-shield-alt text-red-500"></i> 벌금 부과 시스템</h2>
+                </div>
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div class="lg:col-span-2 dashboard-card">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="font-bold">학생 선택 (복수 선택 가능)</h3>
+                            <button onclick="clearSelection()" class="text-xs text-gray-400 underline">초기화</button>
+                        </div>
+                        <div id="studentGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3"></div>
+                    </div>
+                    <div class="dashboard-card space-y-4">
+                        <h3 class="font-bold">부과 내용 입력</h3>
+                        <div>
+                            <label class="text-xs font-bold text-gray-400">대상</label>
+                            <div id="selectedNames" class="p-3 bg-gray-50 rounded-xl text-sm font-bold text-primary transition-colors min-h-[44px]">선택된 학생 없음</div>
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold text-gray-400">금액 (G)</label>
+                            <input type="number" id="fineAmount" class="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-primary transition" placeholder="금액 입력">
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold text-gray-400">사유</label>
+                            <input type="text" id="fineReason" class="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-primary transition" placeholder="사유 입력">
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold text-gray-400">비고</label>
+                            <textarea id="fineNote" class="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-primary transition" placeholder="비고 입력"></textarea>
+                        </div>
+                        <button onclick="submitFines()" class="w-full bg-red-500 text-white font-bold py-4 rounded-xl shadow-lg transform active:scale-95 transition">부과 확정</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="studentFineUI" class="hidden max-w-2xl mx-auto">
+                <div class="dashboard-card">
+                    <h2 class="text-xl font-bold mb-6 flex items-center gap-2"><i class="fas fa-receipt text-red-500"></i> 내 벌금 내역</h2>
+                    <div id="myFineList" class="space-y-4">
+                        <p class="text-center text-gray-400 py-10">받은 벌금이 없습니다.</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // 학생 데이터 (image_cc1412.png 기반 번호/이름 매칭)
+        const studentRaw = [
+            "강유주", "고윤서", "공윤호", "김성민", "김태윤", "나현웅", "류찬혁", "문예린", 
+            "박소율", "박채윤", "배예람", "백한율", "우은서", "우진서", "윤소영", "임소윤", 
+            "임수현", "정시후", "조수빈", "최리한", "최은수", "최준성", "하예준", "허단"
+        ];
+
+        const studentsDB = {};
+        studentRaw.forEach((name, i) => {
+            const id = `67${String(i + 1).padStart(2, '0')}`;
+            studentsDB[id] = {
+                id: id,
+                name: name,
+                pw: id,
+                balance: 2000, // 초기 자산 일괄 지급
+                isFirst: true,
+                history: [{type: '지급', amount: 2000, reason: '관리자 일괄 지급(24명)', date: new Date().toLocaleDateString()}],
+                fines: []
+            };
+        });
+
+        const adminAccount = { id: 'manager1', pw: '*ramalok*', name: '관리자' };
+        let currentUser = null;
+        let loginMode = 'admin';
+        let selectedIds = new Set();
+
+        // 테마 관리
+        function changeTheme(primary, hover) {
+            document.documentElement.style.setProperty('--primary-color', primary);
+            document.documentElement.style.setProperty('--primary-hover', hover);
+        }
+
+        function setLoginMode(mode) {
+            loginMode = mode;
+            const bg = document.getElementById('toggleBg');
+            const btns = document.querySelectorAll('#loginPage button.relative');
+            if (mode === 'admin') {
+                bg.style.left = '4px';
+                btns[0].classList.replace('text-gray-400', 'text-gray-800');
+                btns[1].classList.replace('text-gray-800', 'text-gray-400');
+            } else {
+                bg.style.left = 'calc(50% - 0px)';
+                btns[0].classList.replace('text-gray-800', 'text-gray-400');
+                btns[1].classList.replace('text-gray-400', 'text-gray-800');
+            }
+        }
+
+        function handleLogin() {
+            const id = document.getElementById('loginId').value;
+            const pw = document.getElementById('loginPw').value;
+
+            if (loginMode === 'admin') {
+                if (id === adminAccount.id && pw === adminAccount.pw) {
+                    currentUser = { ...adminAccount, role: 'admin' };
+                    enterApp();
+                } else showError();
+            } else {
+                const user = studentsDB[id];
+                if (user && user.pw === pw) {
+                    currentUser = { ...user, role: 'student' };
+                    if (user.isFirst) {
+                        document.getElementById('loginPage').classList.add('hidden');
+                        document.getElementById('pwChangePage').classList.remove('hidden');
+                    } else enterApp();
+                } else showError();
+            }
+        }
+
+        function showError() {
+            const err = document.getElementById('loginError');
+            err.classList.remove('hidden');
+            setTimeout(() => err.classList.add('hidden'), 2000);
+        }
+
+        function completePwChange() {
+            const p1 = document.getElementById('newPw').value;
+            const p2 = document.getElementById('confirmPw').value;
+            if (!p1 || p1 !== p2) return alert("비밀번호를 확인해주세요.");
+            studentsDB[currentUser.id].pw = p1;
+            studentsDB[currentUser.id].isFirst = false;
+            currentUser.isFirst = false;
+            document.getElementById('pwChangePage').classList.add('hidden');
+            enterApp();
+        }
+
+        function enterApp() {
+            document.getElementById('loginPage').classList.add('hidden');
+            document.getElementById('mainContent').classList.remove('hidden');
+            document.getElementById('userNameDisplay').innerText = `${currentUser.name} 님`;
+            
+            // 테마 변경 버튼은 관리자만 보이게
+            document.getElementById('themePicker').style.display = currentUser.role === 'admin' ? 'flex' : 'none';
+            
+            renderHome();
+            if (currentUser.role === 'admin') {
+                initStudentGrid();
+            }
+        }
+
+        function switchTab(tab) {
+            // 모든 탭 컨텐츠 숨기기
+            document.querySelectorAll('.tab-content').forEach(m => m.classList.add('hidden'));
+            
+            const targetTab = document.getElementById(tab + 'Tab');
+            if (targetTab) {
+                targetTab.classList.remove('hidden');
+            }
+            
+            if (tab === 'fine') {
+                if (currentUser.role === 'admin') {
+                    document.getElementById('adminFineUI').classList.remove('hidden');
+                    document.getElementById('studentFineUI').classList.add('hidden');
+                } else {
+                    document.getElementById('adminFineUI').classList.add('hidden');
+                    document.getElementById('studentFineUI').classList.remove('hidden');
+                    renderMyFines();
+                }
+            }
+            if (tab === 'home') renderHome();
+        }
+
+        function renderHome() {
+            const historyList = document.getElementById('historyList');
+            if (!historyList) return;
+            historyList.innerHTML = '';
+            
+            if (currentUser.role === 'admin') {
+                document.getElementById('userBalance').innerText = "-";
+                historyList.innerHTML = '<div class="text-center text-gray-400 py-10">관리자 대시보드입니다.</div>';
+            } else {
+                const user = studentsDB[currentUser.id];
+                document.getElementById('userBalance').innerText = `${user.balance.toLocaleString()}G`;
+                user.history.slice().reverse().forEach(h => {
+                    const item = document.createElement('div');
+                    item.className = "flex justify-between items-center p-4 bg-gray-50 rounded-2xl";
+                    item.innerHTML = `
+                        <div>
+                            <p class="font-bold text-gray-800">${h.reason}</p>
+                            <p class="text-xs text-gray-400">${h.date}</p>
+                        </div>
+                        <p class="font-bold ${h.type === '지급' ? 'text-blue-500' : 'text-red-500'}">
+                            ${h.type === '지급' ? '+' : '-'}${h.amount.toLocaleString()}G
+                        </p>
+                    `;
+                    historyList.appendChild(item);
+                });
+            }
+        }
+
+        // 벌금 로직
+        function initStudentGrid() {
+            const grid = document.getElementById('studentGrid');
+            if (!grid) return;
+            grid.innerHTML = '';
+            Object.keys(studentsDB).forEach(id => {
+                const s = studentsDB[id];
+                const card = document.createElement('div');
+                card.className = "student-card cursor-pointer p-4 bg-gray-50 border rounded-xl hover:shadow-md transition text-center";
+                card.innerHTML = `
+                    <div class="text-[10px] text-gray-400 mb-1">${id}</div>
+                    <div class="text-sm font-bold">${s.name}</div>
+                `;
+                card.onclick = () => {
+                    if (selectedIds.has(id)) {
+                        selectedIds.delete(id);
+                        card.classList.remove('selected');
+                    } else {
+                        selectedIds.add(id);
+                        card.classList.add('selected');
+                    }
+                    updateSelectedUI();
+                };
+                grid.appendChild(card);
+            });
+        }
+
+        function updateSelectedUI() {
+            const display = document.getElementById('selectedNames');
+            if (!display) return;
+            if (selectedIds.size === 0) display.innerText = "선택된 학생 없음";
+            else {
+                const names = Array.from(selectedIds).map(id => studentsDB[id].name);
+                display.innerText = names.join(', ');
+            }
+        }
+
+        function clearSelection() {
+            selectedIds.clear();
+            document.querySelectorAll('.student-card').forEach(c => c.classList.remove('selected'));
+            updateSelectedUI();
+        }
+
+        function submitFines() {
+            const amountInput = document.getElementById('fineAmount');
+            const reasonInput = document.getElementById('fineReason');
+            const noteInput = document.getElementById('fineNote');
+            
+            const amount = parseInt(amountInput.value);
+            const reason = reasonInput.value;
+            const note = noteInput.value;
+
+            if (selectedIds.size === 0 || !amount || !reason) return alert("부과 정보를 정확히 입력하세요.");
+
+            if (confirm(`${selectedIds.size}명에게 벌금을 부과하시겠습니까?`)) {
+                selectedIds.forEach(id => {
+                    const fine = { amount, reason, note, date: new Date().toLocaleDateString() };
+                    studentsDB[id].fines.push(fine);
+                    studentsDB[id].balance -= amount;
+                    studentsDB[id].history.push({type: '차감', amount, reason: `벌금: ${reason}`, date: fine.date});
+                });
+                alert("벌금 부과가 성공적으로 완료되었습니다.");
+                clearSelection();
+                amountInput.value = '';
+                reasonInput.value = '';
+                noteInput.value = '';
+            }
+        }
+
+        function renderMyFines() {
+            const user = studentsDB[currentUser.id];
+            const list = document.getElementById('myFineList');
+            if (!list) return;
+            list.innerHTML = '';
+            if (user.fines.length === 0) {
+                list.innerHTML = '<p class="text-center text-gray-400 py-10">받은 벌금이 없습니다.</p>';
+            } else {
+                user.fines.slice().reverse().forEach(f => {
+                    const item = document.createElement('div');
+                    item.className = "p-5 border-2 border-red-50 bg-red-50/30 rounded-2xl";
+                    item.innerHTML = `
+                        <div class="flex justify-between mb-2">
+                            <span class="font-bold text-red-600">${f.reason}</span>
+                            <span class="font-black text-gray-800">-${f.amount.toLocaleString()}G</span>
+                        </div>
+                        <p class="text-sm text-gray-500">${f.note || '설명 없음'}</p>
+                        <p class="text-[10px] text-gray-400 mt-2">${f.date} 부과됨</p>
+                    `;
+                    list.appendChild(item);
+                });
+            }
+        }
+    </script>
+</body>
+</html>
