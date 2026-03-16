@@ -18,7 +18,8 @@ import {
   query, 
   arrayUnion,
   deleteDoc,
-  getDocs
+  getDocs,
+  where
 } from 'firebase/firestore';
 import { 
   GraduationCap, 
@@ -32,11 +33,11 @@ import {
   Settings,
   UserCircle,
   Users,
-  ExternalLink,
   RefreshCcw,
   PlusCircle,
   ChevronRight,
-  Info
+  Info,
+  Lock
 } from 'lucide-react';
 
 // --- Firebase 설정 ---
@@ -73,13 +74,14 @@ const INITIAL_STUDENTS = [
   { id: "24", name: "허단", gender: "남", num: "24" }
 ];
 
+// 대박 예금은 isOpen: false로 설정하여 막아둠
 const SAVINGS_PRODUCTS = [
-  { id: 'daily_4', name: '당일 예금', period: '24시간', rate: '4%', desc: '가장 빠르고 안전한 수익' },
-  { id: 'event_1.5', name: '대박 예금(이벤트)', period: '1분', rate: '1.5%', desc: '단 2일간의 특별한 기회!' }
+  { id: 'daily_4', name: '당일 예금', period: '24시간', rate: '4%', desc: '가장 빠르고 안전한 수익', isOpen: true },
+  { id: 'event_1.5', name: '대박 예금(이벤트)', period: '1분', rate: '1.5%', desc: '단 2일간의 특별한 기회!', isOpen: false }
 ];
 
 export default function App() {
-  const [user, setUser] = useState(null);
+  const [firebaseUser, setFirebaseUser] = useState(null);
   const [loginMode, setLoginMode] = useState('student');
   const [loginId, setLoginId] = useState('');
   const [loginPw, setLoginPw] = useState('');
@@ -90,7 +92,6 @@ export default function App() {
   const [currentUserData, setCurrentUserData] = useState(null);
   const [themeColor, setThemeColor] = useState('#6366f1');
 
-  // 배너 슬라이드 상태
   const [bannerIndex, setBannerIndex] = useState(0);
   const banners = [
     {
@@ -107,11 +108,9 @@ export default function App() {
     }
   ];
 
-  // 은행 관련 상태
   const [savingsForm, setSavingsForm] = useState({ productId: '', amount: '', name: '' });
   const [mySavings, setMySavings] = useState([]);
 
-  // 관리자 도구 상태
   const [fineForm, setFineForm] = useState({ amount: '', reason: '', note: '' });
   const [issueForm, setIssueForm] = useState({ amount: '', reason: '' });
   const [selectedStudents, setSelectedStudents] = useState([]);
@@ -131,64 +130,48 @@ export default function App() {
     return () => clearInterval(timer);
   }, [banners.length]);
 
-  // 허단 학생 벌금 복구 로직 (최초 실행 시)
-  useEffect(() => {
-    if (!user) return;
-    const fixDanData = async () => {
-      const finesRef = collection(db, 'artifacts', appId, 'public', 'data', 'fines');
-      const q = await getDocs(finesRef);
-      q.forEach(async (d) => {
-        const data = d.data();
-        if (data.studentName === '허단' && data.amount === 10) {
-          // 벌금 기록 삭제
-          await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'fines', d.id));
-          // 잔액 복구
-          const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'students', '허단');
-          const sSnap = await getDoc(sRef);
-          if (sSnap.exists()) {
-             await updateDoc(sRef, { balance: (sSnap.data().balance || 0) + 10 });
-          }
-        }
-      });
-    };
-    fixDanData();
-  }, [user]);
-
-  // 1. 인증
+  // 1. 인증 초기화 (가장 먼저 실행)
   useEffect(() => {
     const initAuth = async () => {
-      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-        await signInWithCustomToken(auth, __initial_auth_token);
-      } else {
-        await signInAnonymously(auth);
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (err) {
+        console.error("Auth Error:", err);
       }
     };
     initAuth();
     const unsubscribe = onAuthStateChanged(auth, (u) => {
-      setUser(u);
+      setFirebaseUser(u);
     });
     return () => unsubscribe();
   }, []);
 
-  // 2. 데이터 불러오기
+  // 2. 데이터 구독 (인증된 후에만)
   useEffect(() => {
-    if (!user) return;
+    if (!firebaseUser) return;
 
     const studentsRef = collection(db, 'artifacts', appId, 'public', 'data', 'students');
     const unsubStudents = onSnapshot(studentsRef, (snapshot) => {
       const data = {};
       if (snapshot.empty) {
+        // 초기화 시 0G로 설정
         INITIAL_STUDENTS.forEach(async (s) => {
           const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'students', s.name);
           await setDoc(sRef, {
             uid: s.name, name: s.name, id: s.name, pw: `67${s.num}`, num: s.num,
-            gender: s.gender, balance: 1000, role: 'student', themeColor: '#6366f1',
+            gender: s.gender, balance: 0, role: 'student', themeColor: '#6366f1',
             isReset: false, history: []
           });
         });
       }
       snapshot.forEach(doc => { data[doc.id] = doc.data(); });
       setStudents(data);
+    }, (error) => {
+        console.error("Student Stream Error:", error);
     });
 
     const finesRef = collection(db, 'artifacts', appId, 'public', 'data', 'fines');
@@ -196,40 +179,35 @@ export default function App() {
       const list = [];
       snapshot.forEach(doc => { list.push({ id: doc.id, ...doc.data() }); });
       setFines(list.sort((a,b) => b.timestamp - a.timestamp));
+    }, (error) => {
+        console.error("Fines Stream Error:", error);
     });
 
     return () => { unsubStudents(); unsubFines(); };
-  }, [user]);
+  }, [firebaseUser]);
 
   // 내 예금 불러오기
   useEffect(() => {
-    if (!user || !currentUserData || currentUserData.role === 'admin') return;
+    if (!firebaseUser || !currentUserData || currentUserData.role === 'admin') return;
     const savingsRef = collection(db, 'artifacts', appId, 'users', currentUserData.uid, 'savings');
     const unsubSavings = onSnapshot(savingsRef, (snapshot) => {
       const list = [];
       snapshot.forEach(doc => { list.push({ id: doc.id, ...doc.data() }); });
       setMySavings(list);
-    });
+    }, (error) => console.error(error));
     return () => unsubSavings();
-  }, [user, currentUserData]);
+  }, [firebaseUser, currentUserData]);
 
-  // 자동 포커스
+  // 자동 포커스 수정 (로그인 안했을 때만 실행되도록 가드 강화)
   useEffect(() => {
-    if (!currentUserData && idInputRef.current) {
+    if (!currentUserData && idInputRef.current && loginId === '') {
       idInputRef.current.focus();
     }
   }, [currentUserData, loginMode]);
 
-  const maintainFocus = () => {
-    if (!currentUserData && idInputRef.current) {
-      idInputRef.current.focus();
-    }
-  };
-
   const handleLogin = (e) => {
     if (e) e.preventDefault();
     if (loginMode === 'admin') {
-      // 관리자 로그인 로직 강화
       if (loginId.trim() === 'manager1' && loginPw.trim() === 'ramalok*') {
         setCurrentUserData({ uid: 'admin_root', name: '관리자', role: 'admin' });
         setActiveTab('home');
@@ -256,29 +234,34 @@ export default function App() {
   const joinSavings = async () => {
     const amount = parseInt(savingsForm.amount);
     if (!savingsForm.productId || isNaN(amount) || !savingsForm.name) return alert("예금 상품, 명칭, 금액을 모두 입력하세요.");
+    
+    const product = SAVINGS_PRODUCTS.find(p => p.id === savingsForm.productId);
+    if (!product.isOpen) return alert("해당 예금 상품은 아직 오픈되지 않았습니다!");
+    
     if (amount > (students[currentUserData.uid]?.balance || 0)) return alert("잔액이 부족합니다.");
 
-    const product = SAVINGS_PRODUCTS.find(p => p.id === savingsForm.productId);
     const dateStr = new Date().toLocaleString();
-
-    // 1. 잔액 차감
     const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'students', currentUserData.uid);
-    await updateDoc(sRef, {
-      balance: students[currentUserData.uid].balance - amount,
-      history: arrayUnion({ type: '차감', amount, reason: `예금 가입: ${savingsForm.name}`, date: dateStr })
-    });
+    
+    try {
+      await updateDoc(sRef, {
+        balance: (students[currentUserData.uid].balance || 0) - amount,
+        history: arrayUnion({ type: '차감', amount, reason: `예금 가입: ${savingsForm.name}`, date: dateStr })
+      });
 
-    // 2. 예금 데이터 추가
-    await addDoc(collection(db, 'artifacts', appId, 'users', currentUserData.uid, 'savings'), {
-      ...product,
-      accountName: savingsForm.name,
-      amount: amount,
-      startDate: dateStr,
-      timestamp: Date.now()
-    });
+      await addDoc(collection(db, 'artifacts', appId, 'users', currentUserData.uid, 'savings'), {
+        ...product,
+        accountName: savingsForm.name,
+        amount: amount,
+        startDate: dateStr,
+        timestamp: Date.now()
+      });
 
-    alert("예금 가입이 완료되었습니다!");
-    setSavingsForm({ productId: '', amount: '', name: '' });
+      alert("예금 가입이 완료되었습니다!");
+      setSavingsForm({ productId: '', amount: '', name: '' });
+    } catch (e) {
+      alert("오류가 발생했습니다.");
+    }
   };
 
   const submitFine = async () => {
@@ -321,11 +304,11 @@ export default function App() {
     setSelectedStudents([]);
   };
 
-  if (!user) return <div className="h-screen flex items-center justify-center bg-white text-indigo-600 font-bold">시스템 연결 중...</div>;
+  if (!firebaseUser) return <div className="h-screen flex items-center justify-center bg-white text-indigo-600 font-bold">인증 서버 연결 중...</div>;
 
   if (!currentUserData) {
     return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4" onClick={maintainFocus}>
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
         <div className="bg-white rounded-3xl shadow-2xl flex flex-col md:flex-row w-full max-w-5xl overflow-hidden min-h-[500px]">
           <div className="md:w-1/2 bg-gradient-to-br from-indigo-600 to-purple-700 p-12 text-white flex flex-col justify-center">
             <div className="mb-8 bg-white/20 p-4 rounded-2xl w-fit"><GraduationCap size={48} /></div>
@@ -346,7 +329,7 @@ export default function App() {
                 <label className="block text-sm font-bold text-gray-700 mb-2">비밀번호</label>
                 <input type="password" value={loginPw} onChange={(e) => setLoginPw(e.target.value)} className="w-full p-4 border-2 border-gray-100 rounded-xl focus:border-indigo-500 outline-none font-bold" placeholder="••••••••" required />
               </div>
-              <button type="submit" className="w-full py-4 bg-indigo-600 text-white font-black rounded-xl shadow-lg">로그인</button>
+              <button type="submit" className="w-full py-4 bg-indigo-600 text-white font-black rounded-xl shadow-lg hover:bg-indigo-700 transition-colors">로그인</button>
             </form>
           </div>
         </div>
@@ -359,7 +342,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 pb-20">
-      {/* 자동 슬라이드 배너 */}
       <div className={`transition-all duration-1000 bg-gradient-to-r ${banners[bannerIndex].color} p-4 text-white shadow-lg`}>
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <div>
@@ -401,7 +383,7 @@ export default function App() {
             <div className="text-xs text-slate-400 font-bold tracking-wider">{isAdmin ? 'ADMIN' : 'STUDENT'}</div>
             <div className="font-bold">{myData.name}님</div>
           </div>
-          <button onClick={() => setCurrentUserData(null)} className="p-2 text-red-500 hover:bg-red-50 rounded-xl"><LogOut size={22} /></button>
+          <button onClick={() => { setCurrentUserData(null); setLoginId(''); setLoginPw(''); }} className="p-2 text-red-500 hover:bg-red-50 rounded-xl"><LogOut size={22} /></button>
         </div>
       </header>
 
@@ -437,6 +419,7 @@ export default function App() {
                      <div className={`font-black ${h.type === '지급' ? 'text-green-600' : 'text-red-600'}`}>{h.type === '지급' ? '+' : '-'}{h.amount.toLocaleString()}G</div>
                    </div>
                  ))}
+                 {(!myData.history || myData.history.length === 0) && <div className="text-center py-10 text-slate-300 font-bold">최근 활동 내역이 없습니다.</div>}
                </div>
             </div>
           </div>
@@ -454,8 +437,9 @@ export default function App() {
                        <button
                          key={p.id}
                          onClick={() => setSavingsForm({...savingsForm, productId: p.id})}
-                         className={`p-4 rounded-2xl border-2 text-left transition-all ${savingsForm.productId === p.id ? 'border-indigo-600 bg-indigo-50' : 'border-slate-100 hover:border-indigo-200'}`}
+                         className={`p-4 rounded-2xl border-2 text-left transition-all relative overflow-hidden ${savingsForm.productId === p.id ? 'border-indigo-600 bg-indigo-50' : 'border-slate-100 hover:border-indigo-200'}`}
                        >
+                         {!p.isOpen && <div className="absolute inset-0 bg-slate-900/10 backdrop-blur-[1px] flex items-center justify-center font-black text-slate-600 gap-2"><Lock size={16} /> 미오픈</div>}
                          <div className="flex justify-between items-center">
                            <span className="font-black text-lg">{p.name}</span>
                            <span className="bg-indigo-600 text-white px-3 py-1 rounded-full text-xs font-bold">{p.rate} 이자</span>
@@ -536,6 +520,7 @@ export default function App() {
                     <div className="text-red-600 font-black">-{f.amount.toLocaleString()}G</div>
                   </div>
                 ))}
+                {fines.length === 0 && <div className="text-center py-10 text-slate-300 font-bold">기록된 벌금이 없습니다.</div>}
               </div>
             </div>
           </div>
@@ -577,19 +562,6 @@ export default function App() {
                       ) : <span className="text-indigo-600 font-bold">{myData.pw}</span>}
                     </div>
                  </div>
-                 {isPwVerified && (
-                   <div className="space-y-3 pt-4 border-t">
-                      <input type="text" placeholder="새 아이디" value={newProfileData.id} onChange={(e)=>setNewProfileData({...newProfileData, id: e.target.value})} className="w-full p-4 bg-slate-50 rounded-xl font-bold outline-none border-2 border-transparent focus:border-indigo-500" />
-                      <input type="password" placeholder="새 비밀번호 (4자 이상)" value={newProfileData.pw} onChange={(e)=>setNewProfileData({...newProfileData, pw: e.target.value})} className="w-full p-4 bg-slate-50 rounded-xl font-bold outline-none border-2 border-transparent focus:border-indigo-500" />
-                      <button onClick={async () => {
-                        if (newProfileData.pw && (newProfileData.pw.length < 4 || newProfileData.pw.includes(currentUserData.name))) return alert("비밀번호 조건을 확인하세요.");
-                        const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'students', currentUserData.uid);
-                        await updateDoc(sRef, { id: newProfileData.id || myData.id, pw: newProfileData.pw || myData.pw });
-                        alert("정보가 성공적으로 변경되었습니다.");
-                        setIsPwVerified(false);
-                      }} className="w-full py-4 bg-black text-white font-bold rounded-xl">변경 저장</button>
-                   </div>
-                 )}
               </div>
             </div>
             {isAdmin && (
