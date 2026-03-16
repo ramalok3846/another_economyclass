@@ -10,16 +10,11 @@ import {
   getFirestore, 
   doc, 
   setDoc, 
-  getDoc, 
   collection, 
   onSnapshot, 
   updateDoc, 
   addDoc, 
-  query, 
-  arrayUnion,
-  deleteDoc,
-  getDocs,
-  where
+  arrayUnion
 } from 'firebase/firestore';
 import { 
   GraduationCap, 
@@ -74,7 +69,6 @@ const INITIAL_STUDENTS = [
   { id: "24", name: "허단", gender: "남", num: "24" }
 ];
 
-// 대박 예금은 isOpen: false로 설정하여 막아둠
 const SAVINGS_PRODUCTS = [
   { id: 'daily_4', name: '당일 예금', period: '24시간', rate: '4%', desc: '가장 빠르고 안전한 수익', isOpen: true },
   { id: 'event_1.5', name: '대박 예금(이벤트)', period: '1분', rate: '1.5%', desc: '단 2일간의 특별한 기회!', isOpen: false }
@@ -90,8 +84,7 @@ export default function App() {
   const [fines, setFines] = useState([]);
   const [activeTab, setActiveTab] = useState('home');
   const [currentUserData, setCurrentUserData] = useState(null);
-  const [themeColor, setThemeColor] = useState('#6366f1');
-
+  
   const [bannerIndex, setBannerIndex] = useState(0);
   const banners = [
     {
@@ -110,27 +103,21 @@ export default function App() {
 
   const [savingsForm, setSavingsForm] = useState({ productId: '', amount: '', name: '' });
   const [mySavings, setMySavings] = useState([]);
-
-  const [fineForm, setFineForm] = useState({ amount: '', reason: '', note: '' });
+  const [fineForm, setFineForm] = useState({ amount: '', reason: '' });
   const [issueForm, setIssueForm] = useState({ amount: '', reason: '' });
   const [selectedStudents, setSelectedStudents] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
-
-  const [pwInputForCheck, setPwInputForCheck] = useState('');
   const [isPwVerified, setIsPwVerified] = useState(false);
-  const [newProfileData, setNewProfileData] = useState({ id: '', pw: '' });
 
   const idInputRef = useRef(null);
 
   // 배너 타이머
   useEffect(() => {
-    const timer = setInterval(() => {
-      setBannerIndex((prev) => (prev + 1) % banners.length);
-    }, 5000);
+    const timer = setInterval(() => setBannerIndex((prev) => (prev + 1) % banners.length), 5000);
     return () => clearInterval(timer);
   }, [banners.length]);
 
-  // 1. 인증 초기화 (가장 먼저 실행)
+  // 1. 인증 초기화
   useEffect(() => {
     const initAuth = async () => {
       try {
@@ -140,17 +127,15 @@ export default function App() {
           await signInAnonymously(auth);
         }
       } catch (err) {
-        console.error("Auth Error:", err);
+        console.error("Auth Init Failed:", err);
       }
     };
     initAuth();
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
-      setFirebaseUser(u);
-    });
+    const unsubscribe = onAuthStateChanged(auth, (u) => setFirebaseUser(u));
     return () => unsubscribe();
   }, []);
 
-  // 2. 데이터 구독 (인증된 후에만)
+  // 2. 공용 데이터 감시 (학생 목록, 벌금 내역)
   useEffect(() => {
     if (!firebaseUser) return;
 
@@ -158,94 +143,106 @@ export default function App() {
     const unsubStudents = onSnapshot(studentsRef, (snapshot) => {
       const data = {};
       if (snapshot.empty) {
-        // 초기화 시 0G로 설정
         INITIAL_STUDENTS.forEach(async (s) => {
           const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'students', s.name);
           await setDoc(sRef, {
             uid: s.name, name: s.name, id: s.name, pw: `67${s.num}`, num: s.num,
-            gender: s.gender, balance: 0, role: 'student', themeColor: '#6366f1',
-            isReset: false, history: []
+            gender: s.gender, balance: 0, role: 'student', themeColor: '#6366f1', history: []
           });
         });
       }
       snapshot.forEach(doc => { data[doc.id] = doc.data(); });
       setStudents(data);
-    }, (error) => {
-        console.error("Student Stream Error:", error);
-    });
+    }, (err) => console.error("Students Listener Error:", err));
 
     const finesRef = collection(db, 'artifacts', appId, 'public', 'data', 'fines');
     const unsubFines = onSnapshot(finesRef, (snapshot) => {
       const list = [];
       snapshot.forEach(doc => { list.push({ id: doc.id, ...doc.data() }); });
       setFines(list.sort((a,b) => b.timestamp - a.timestamp));
-    }, (error) => {
-        console.error("Fines Stream Error:", error);
-    });
+    }, (err) => console.error("Fines Listener Error:", err));
 
     return () => { unsubStudents(); unsubFines(); };
   }, [firebaseUser]);
 
-  // 내 예금 불러오기
+  // 3. 내 예금 감시 (수정: 관리자일 때는 감시하지 않음 - 권한 에러 해결)
   useEffect(() => {
-    if (!firebaseUser || !currentUserData || currentUserData.role === 'admin') return;
+    if (!firebaseUser || !currentUserData || currentUserData.role === 'admin' || !currentUserData.uid) {
+      setMySavings([]);
+      return;
+    }
     const savingsRef = collection(db, 'artifacts', appId, 'users', currentUserData.uid, 'savings');
     const unsubSavings = onSnapshot(savingsRef, (snapshot) => {
       const list = [];
       snapshot.forEach(doc => { list.push({ id: doc.id, ...doc.data() }); });
       setMySavings(list);
-    }, (error) => console.error(error));
+    }, (err) => {
+      // 권한 에러가 발생해도 앱이 멈추지 않게 처리
+      if (err.code !== 'permission-denied') {
+        console.error("Savings Listener Error:", err);
+      }
+    });
     return () => unsubSavings();
   }, [firebaseUser, currentUserData]);
 
-  // 자동 포커스 수정 (로그인 안했을 때만 실행되도록 가드 강화)
+  // 포커스 로직
   useEffect(() => {
-    if (!currentUserData && idInputRef.current && loginId === '') {
-      idInputRef.current.focus();
+    if (!currentUserData && idInputRef.current) {
+      const timer = setTimeout(() => {
+        idInputRef.current.focus();
+      }, 200);
+      return () => clearTimeout(timer);
     }
   }, [currentUserData, loginMode]);
 
+  // 로그인 처리 (수정: 관리자 로그인 강제 처리)
   const handleLogin = (e) => {
-    if (e) e.preventDefault();
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    const trimmedId = loginId.trim();
+    const trimmedPw = loginPw.trim();
+
     if (loginMode === 'admin') {
-      if (loginId.trim() === 'manager1' && loginPw.trim() === 'ramalok*') {
+      if (trimmedId === 'manager1' && trimmedPw === 'ramalok*') {
         setCurrentUserData({ uid: 'admin_root', name: '관리자', role: 'admin' });
-        setActiveTab('home');
         setLoginId('');
         setLoginPw('');
+        setActiveTab('home');
       } else {
-        alert("관리자 계정 정보가 틀립니다.");
+        alert("관리자 계정 정보가 일치하지 않습니다.");
       }
     } else {
-      const studentKeys = Object.keys(students);
-      const matched = studentKeys.find(k => students[k].id === loginId && students[k].pw === loginPw);
-      
+      const matched = Object.values(students).find(s => s.id === trimmedId && s.pw === trimmedPw);
       if (matched) {
-        setCurrentUserData(students[matched]);
-        setActiveTab('home');
+        setCurrentUserData(matched);
         setLoginId('');
         setLoginPw('');
+        setActiveTab('home');
       } else {
-        alert("아이디 또는 비밀번호가 올바르지 않습니다.");
+        alert("학생 아이디 또는 비밀번호를 확인하세요.");
       }
     }
   };
 
   const joinSavings = async () => {
     const amount = parseInt(savingsForm.amount);
-    if (!savingsForm.productId || isNaN(amount) || !savingsForm.name) return alert("예금 상품, 명칭, 금액을 모두 입력하세요.");
+    if (!savingsForm.productId || isNaN(amount) || !savingsForm.name) return alert("빈칸을 모두 채워주세요.");
     
     const product = SAVINGS_PRODUCTS.find(p => p.id === savingsForm.productId);
-    if (!product.isOpen) return alert("해당 예금 상품은 아직 오픈되지 않았습니다!");
+    if (!product.isOpen) return alert("대박 예금은 현재 미오픈 상태입니다!");
     
-    if (amount > (students[currentUserData.uid]?.balance || 0)) return alert("잔액이 부족합니다.");
+    const myBalance = students[currentUserData.uid]?.balance || 0;
+    if (amount > myBalance) return alert("잔액이 부족합니다.");
 
-    const dateStr = new Date().toLocaleString();
-    const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'students', currentUserData.uid);
-    
     try {
+      const dateStr = new Date().toLocaleString();
+      const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'students', currentUserData.uid);
+      
       await updateDoc(sRef, {
-        balance: (students[currentUserData.uid].balance || 0) - amount,
+        balance: myBalance - amount,
         history: arrayUnion({ type: '차감', amount, reason: `예금 가입: ${savingsForm.name}`, date: dateStr })
       });
 
@@ -257,33 +254,32 @@ export default function App() {
         timestamp: Date.now()
       });
 
-      alert("예금 가입이 완료되었습니다!");
+      alert("예금 가입 성공!");
       setSavingsForm({ productId: '', amount: '', name: '' });
     } catch (e) {
-      alert("오류가 발생했습니다.");
+      alert("서버 통신 중 오류 발생");
     }
   };
 
   const submitFine = async () => {
-    if (selectedStudents.length === 0 || !fineForm.amount) return alert("대상과 금액을 확인하세요.");
+    if (selectedStudents.length === 0 || !fineForm.amount) return alert("대상과 금액을 입력하세요.");
     const amount = parseInt(fineForm.amount);
     const dateStr = new Date().toLocaleString();
     
     for (const sId of selectedStudents) {
-      const fineData = {
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'fines'), {
         studentId: sId, studentName: students[sId].name,
         amount, reason: fineForm.reason || '규칙 위반',
         timestamp: Date.now(), date: dateStr
-      };
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'fines'), fineData);
+      });
       const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'students', sId);
       await updateDoc(sRef, {
         balance: (students[sId].balance || 0) - amount,
-        history: arrayUnion({ type: '차감', amount, reason: `벌금: ${fineData.reason}`, date: dateStr })
+        history: arrayUnion({ type: '차감', amount, reason: `벌금: ${fineForm.reason || '규칙 위반'}`, date: dateStr })
       });
     }
     alert("벌금 부과 완료.");
-    setFineForm({ amount: '', reason: '', note: '' });
+    setFineForm({ amount: '', reason: '' });
     setSelectedStudents([]);
   };
 
@@ -299,37 +295,59 @@ export default function App() {
         history: arrayUnion({ type: '지급', amount, reason: issueForm.reason || '기타 지급', date: dateStr })
       });
     }
-    alert("화폐 발행 완료.");
+    alert("발행 성공.");
     setIssueForm({ amount: '', reason: '' });
     setSelectedStudents([]);
   };
 
-  if (!firebaseUser) return <div className="h-screen flex items-center justify-center bg-white text-indigo-600 font-bold">인증 서버 연결 중...</div>;
+  // 대기 화면
+  if (!firebaseUser) return <div className="h-screen flex items-center justify-center bg-slate-50 font-black text-indigo-600">서버 연결 중...</div>;
 
+  // 로그인 화면
   if (!currentUserData) {
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-        <div className="bg-white rounded-3xl shadow-2xl flex flex-col md:flex-row w-full max-w-5xl overflow-hidden min-h-[500px]">
+        <div className="bg-white rounded-[2.5rem] shadow-2xl flex flex-col md:flex-row w-full max-w-5xl overflow-hidden">
           <div className="md:w-1/2 bg-gradient-to-br from-indigo-600 to-purple-700 p-12 text-white flex flex-col justify-center">
-            <div className="mb-8 bg-white/20 p-4 rounded-2xl w-fit"><GraduationCap size={48} /></div>
+            <div className="mb-8 bg-white/20 p-4 rounded-3xl w-fit"><GraduationCap size={48} /></div>
             <h1 className="text-4xl font-black mb-4">또다른<br />경제교실</h1>
-            <p className="text-indigo-100 text-lg opacity-80">성공적인 교실 경제의 시작</p>
+            <p className="text-indigo-100 text-lg opacity-80 font-medium tracking-tight">성장하는 우리들의 작은 경제 생태계</p>
           </div>
-          <div className="md:w-1/2 p-12 flex flex-col justify-center">
-            <div className="flex bg-gray-100 p-1 rounded-xl mb-8">
-              <button type="button" onClick={() => setLoginMode('student')} className={`flex-1 py-3 rounded-lg font-bold transition-all ${loginMode === 'student' ? 'bg-white shadow text-indigo-600' : 'text-gray-400'}`}>학생</button>
-              <button type="button" onClick={() => setLoginMode('admin')} className={`flex-1 py-3 rounded-lg font-bold transition-all ${loginMode === 'admin' ? 'bg-white shadow text-indigo-600' : 'text-gray-400'}`}>관리자</button>
+          <div className="md:w-1/2 p-12 flex flex-col justify-center bg-white">
+            <div className="flex bg-slate-100 p-1 rounded-2xl mb-10">
+              <button type="button" onClick={() => setLoginMode('student')} className={`flex-1 py-4 rounded-xl font-black transition-all ${loginMode === 'student' ? 'bg-white shadow-md text-indigo-600' : 'text-slate-400'}`}>학생 로그인</button>
+              <button type="button" onClick={() => setLoginMode('admin')} className={`flex-1 py-4 rounded-xl font-black transition-all ${loginMode === 'admin' ? 'bg-white shadow-md text-indigo-600' : 'text-slate-400'}`}>관리자 로그인</button>
             </div>
             <form onSubmit={handleLogin} className="space-y-6">
               <div>
-                <label className="block text-sm font-bold text-gray-700 mb-2">아이디</label>
-                <input ref={idInputRef} type="text" value={loginId} onChange={(e) => setLoginId(e.target.value)} className="w-full p-4 border-2 border-gray-100 rounded-xl focus:border-indigo-500 outline-none font-bold" placeholder="아이디 입력" required />
+                <label className="block text-xs font-black text-slate-400 mb-2 px-1 uppercase tracking-widest">아이디 (이름 또는 학번)</label>
+                <input 
+                  ref={idInputRef} 
+                  type="text" 
+                  value={loginId} 
+                  onChange={(e) => setLoginId(e.target.value)} 
+                  className="w-full p-5 bg-slate-50 border-2 border-slate-50 rounded-2xl focus:border-indigo-500 focus:bg-white outline-none font-bold transition-all" 
+                  placeholder={loginMode === 'admin' ? "관리자 아이디를 입력하세요" : "이름이나 학번을 입력하세요"} 
+                  required 
+                />
               </div>
               <div>
-                <label className="block text-sm font-bold text-gray-700 mb-2">비밀번호</label>
-                <input type="password" value={loginPw} onChange={(e) => setLoginPw(e.target.value)} className="w-full p-4 border-2 border-gray-100 rounded-xl focus:border-indigo-500 outline-none font-bold" placeholder="••••••••" required />
+                <label className="block text-xs font-black text-slate-400 mb-2 px-1 uppercase tracking-widest">비밀번호 (PIN)</label>
+                <input 
+                  type="password" 
+                  value={loginPw} 
+                  onChange={(e) => setLoginPw(e.target.value)} 
+                  className="w-full p-5 bg-slate-50 border-2 border-slate-50 rounded-2xl focus:border-indigo-500 focus:bg-white outline-none font-bold transition-all" 
+                  placeholder="••••••••" 
+                  required 
+                />
               </div>
-              <button type="submit" className="w-full py-4 bg-indigo-600 text-white font-black rounded-xl shadow-lg hover:bg-indigo-700 transition-colors">로그인</button>
+              <button 
+                type="submit" 
+                className="w-full py-5 bg-indigo-600 text-white font-black rounded-2xl shadow-xl shadow-indigo-200 hover:bg-indigo-700 hover:-translate-y-1 transition-all active:scale-95"
+              >
+                교실 입장하기
+              </button>
             </form>
           </div>
         </div>
@@ -342,132 +360,139 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 pb-20">
-      <div className={`transition-all duration-1000 bg-gradient-to-r ${banners[bannerIndex].color} p-4 text-white shadow-lg`}>
+      {/* 배너 섹션 */}
+      <div className={`transition-all duration-700 bg-gradient-to-r ${banners[bannerIndex].color} p-4 text-white shadow-md overflow-hidden`}>
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-          <div>
-            <h4 className="font-black text-lg md:text-xl flex items-center gap-2">
-              <Info size={20} /> {banners[bannerIndex].title}
-            </h4>
-            <p className="text-sm opacity-90 font-medium">{banners[bannerIndex].desc}</p>
+          <div className="flex items-center gap-3">
+             <div className="bg-white/20 p-2 rounded-lg"><Info size={20} /></div>
+             <div>
+                <h4 className="font-black text-base">{banners[bannerIndex].title}</h4>
+                <p className="text-xs opacity-90 font-medium">{banners[bannerIndex].desc}</p>
+             </div>
           </div>
           {banners[bannerIndex].link && (
-            <a href={banners[bannerIndex].link} target="_blank" rel="noopener noreferrer" className="px-6 py-2 bg-white text-slate-900 rounded-full font-black text-sm hover:scale-105 transition-transform flex items-center gap-2">
-              참여하기 <ChevronRight size={16} />
+            <a href={banners[bannerIndex].link} target="_blank" rel="noopener noreferrer" className="px-5 py-2 bg-white text-slate-900 rounded-full font-black text-xs hover:bg-slate-100 transition-colors flex items-center gap-1">
+              참여하기 <ChevronRight size={14} />
             </a>
           )}
         </div>
       </div>
 
-      <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b px-6 py-4 flex justify-between items-center">
+      <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-xl border-b px-6 py-4 flex justify-between items-center shadow-sm">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-lg" style={{ backgroundColor: myData.themeColor || themeColor }}>
+          <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-lg shadow-indigo-200">
             <GraduationCap size={24} />
           </div>
-          <span className="text-xl font-black">또다른 경제교실</span>
+          <span className="text-xl font-black tracking-tight">또다른 경제교실</span>
         </div>
-        <nav className="hidden md:flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+        <nav className="hidden md:flex items-center gap-2 bg-slate-100 p-1 rounded-2xl">
           {[
-            { id: 'home', label: '대시보드', icon: ChartPie },
+            { id: 'home', label: '홈', icon: ChartPie },
             { id: 'bank', label: '은행', icon: University },
             { id: 'fine', label: '벌금', icon: ShieldAlert },
             ...(isAdmin ? [{ id: 'issue', label: '발행', icon: Banknote }] : []),
-            { id: 'settings', label: '설정', icon: Settings }
+            { id: 'settings', label: '관리', icon: Settings }
           ].map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all ${activeTab === tab.id ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-black text-sm transition-all ${activeTab === tab.id ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
               <tab.icon size={18} /> {tab.label}
             </button>
           ))}
         </nav>
         <div className="flex items-center gap-4">
-          <div className="text-right">
-            <div className="text-xs text-slate-400 font-bold tracking-wider">{isAdmin ? 'ADMIN' : 'STUDENT'}</div>
-            <div className="font-bold">{myData.name}님</div>
+          <div className="text-right hidden sm:block">
+            <div className="text-[10px] text-slate-400 font-black uppercase tracking-widest">{isAdmin ? '마스터' : '학생'}</div>
+            <div className="font-black text-sm">{myData.name}</div>
           </div>
-          <button onClick={() => { setCurrentUserData(null); setLoginId(''); setLoginPw(''); }} className="p-2 text-red-500 hover:bg-red-50 rounded-xl"><LogOut size={22} /></button>
+          <button onClick={() => setCurrentUserData(null)} className="p-2.5 bg-red-50 text-red-500 hover:bg-red-100 rounded-xl transition-colors"><LogOut size={20} /></button>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto p-6">
+      <main className="max-w-7xl mx-auto p-6 md:p-8">
         {activeTab === 'home' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 bg-white rounded-3xl p-8 shadow-sm border border-slate-100 relative overflow-hidden">
-               <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none"><Coins size={120} /></div>
-               <h2 className="text-slate-400 font-bold mb-1">내 자산</h2>
-               <div className="text-5xl font-black mb-8">{myData.balance?.toLocaleString() || 0} <span className="text-2xl text-slate-400">G</span></div>
-               <div className="grid grid-cols-3 gap-4">
-                 <div className="bg-slate-50 p-4 rounded-2xl"><div className="text-xs text-slate-400 font-bold">현금</div><div className="font-bold">{(myData.balance || 0).toLocaleString()}G</div></div>
-                 <div className="bg-slate-50 p-4 rounded-2xl"><div className="text-xs text-slate-400 font-bold">예금</div><div className="font-bold">{(mySavings.reduce((a,b)=>a+b.amount,0)).toLocaleString()}G</div></div>
-                 <div className="bg-slate-50 p-4 rounded-2xl opacity-50"><div className="text-xs text-slate-400 font-bold">증권</div><div className="font-bold">0G</div></div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2 bg-white rounded-[2rem] p-10 shadow-sm border border-slate-100 relative overflow-hidden group">
+               <div className="absolute -top-10 -right-10 p-20 opacity-5 group-hover:scale-110 transition-transform duration-700"><Coins size={200} /></div>
+               <h2 className="text-slate-400 font-black text-sm mb-2 uppercase tracking-widest">현재 보유 잔액</h2>
+               <div className="text-6xl font-black mb-10 tracking-tighter">{(myData.balance || 0).toLocaleString()} <span className="text-2xl text-slate-300 font-bold ml-1">G</span></div>
+               <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                 <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100"><div className="text-xs text-slate-400 font-bold mb-1">보유 현금</div><div className="font-black text-xl">{(myData.balance || 0).toLocaleString()}G</div></div>
+                 <div className="bg-indigo-50 p-6 rounded-3xl border border-indigo-100"><div className="text-xs text-indigo-400 font-bold mb-1">예치 예금</div><div className="font-black text-xl text-indigo-600">{(mySavings.reduce((a,b)=>a+b.amount,0)).toLocaleString()}G</div></div>
+                 <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 opacity-40 hidden sm:block"><div className="text-xs text-slate-400 font-bold mb-1">주식 자산</div><div className="font-black text-xl">0G</div></div>
                </div>
             </div>
-            <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-100">
-              <h3 className="font-black text-lg mb-6 flex items-center gap-2"><History className="text-indigo-500" size={20} /> 통계</h3>
+            
+            <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100">
+              <h3 className="font-black text-lg mb-6 flex items-center gap-2"><History className="text-indigo-500" size={22} /> 경제 리포트</h3>
               <div className="space-y-4">
-                <div className="flex justify-between items-center p-4 bg-indigo-50 rounded-2xl"><span className="text-indigo-600 font-bold">전체 발행액</span><span className="font-black">{(Object.values(students).reduce((a,b)=>a+(b.balance||0), 0)).toLocaleString()}G</span></div>
-                <div className="flex justify-between items-center p-4 bg-red-50 rounded-2xl"><span className="text-red-600 font-bold">누적 벌금액</span><span className="font-black">{(fines.reduce((a,b)=>a+b.amount, 0)).toLocaleString()}G</span></div>
+                <div className="flex justify-between items-center p-5 bg-indigo-50 rounded-2xl border border-indigo-100"><span className="text-indigo-600 font-black text-sm">교실 총 통화량</span><span className="font-black text-lg">{(Object.values(students).reduce((a,b)=>a+(b.balance||0), 0)).toLocaleString()}G</span></div>
+                <div className="flex justify-between items-center p-5 bg-rose-50 rounded-2xl border border-rose-100"><span className="text-rose-600 font-black text-sm">누적 벌금액</span><span className="font-black text-lg text-rose-600">{(fines.reduce((a,b)=>a+b.amount, 0)).toLocaleString()}G</span></div>
               </div>
             </div>
-            <div className="lg:col-span-3 bg-white rounded-3xl p-8 shadow-sm border border-slate-100">
-               <h3 className="font-black text-lg mb-6">최근 내역</h3>
-               <div className="space-y-3">
-                 {myData.history?.slice(-5).reverse().map((h, i) => (
-                   <div key={i} className="flex items-center justify-between p-4 hover:bg-slate-50 rounded-2xl transition-all">
-                     <div className="flex items-center gap-4">
-                       <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${h.type === '지급' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>{h.type === '지급' ? '↑' : '↓'}</div>
-                       <div><div className="font-bold">{h.reason}</div><div className="text-xs text-slate-400">{h.date}</div></div>
+
+            <div className="lg:col-span-3 bg-white rounded-[2rem] p-10 shadow-sm border border-slate-100">
+               <h3 className="font-black text-xl mb-8">최근 활동 내역</h3>
+               <div className="space-y-4">
+                 {myData.history?.slice(-8).reverse().map((h, i) => (
+                   <div key={i} className="flex items-center justify-between p-5 bg-slate-50 hover:bg-white hover:shadow-md hover:border-slate-100 border border-transparent rounded-2xl transition-all">
+                     <div className="flex items-center gap-5">
+                       <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-lg ${h.type === '지급' ? 'bg-green-100 text-green-600' : 'bg-rose-100 text-rose-600'}`}>{h.type === '지급' ? '↑' : '↓'}</div>
+                       <div><div className="font-black text-slate-800">{h.reason}</div><div className="text-xs text-slate-400 font-bold mt-0.5">{h.date}</div></div>
                      </div>
-                     <div className={`font-black ${h.type === '지급' ? 'text-green-600' : 'text-red-600'}`}>{h.type === '지급' ? '+' : '-'}{h.amount.toLocaleString()}G</div>
+                     <div className={`font-black text-xl ${h.type === '지급' ? 'text-green-600' : 'text-rose-600'}`}>{h.type === '지급' ? '+' : '-'}{h.amount.toLocaleString()} <span className="text-sm">G</span></div>
                    </div>
                  ))}
-                 {(!myData.history || myData.history.length === 0) && <div className="text-center py-10 text-slate-300 font-bold">최근 활동 내역이 없습니다.</div>}
+                 {(!myData.history || myData.history.length === 0) && <div className="text-center py-20 text-slate-300 font-black text-lg">기록된 금융 활동이 없습니다.</div>}
                </div>
             </div>
           </div>
         )}
 
         {activeTab === 'bank' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <div className="bg-white rounded-3xl p-8 shadow-sm border">
-               <h3 className="text-2xl font-black mb-8 text-indigo-600 flex items-center gap-2"><PlusCircle /> 예금 가입</h3>
-               <div className="space-y-6">
-                 <div>
-                   <label className="block text-sm font-bold text-slate-500 mb-2">상품 선택</label>
-                   <div className="grid grid-cols-1 gap-3">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+            <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100">
+               <h3 className="text-2xl font-black mb-10 text-indigo-600 flex items-center gap-3"><PlusCircle size={28} /> 신규 예금 가입</h3>
+               <div className="space-y-8">
+                 <div className="space-y-4">
+                   <label className="text-xs font-black text-slate-400 uppercase tracking-widest px-1">상품 선택</label>
+                   <div className="grid grid-cols-1 gap-4">
                      {SAVINGS_PRODUCTS.map(p => (
                        <button
                          key={p.id}
                          onClick={() => setSavingsForm({...savingsForm, productId: p.id})}
-                         className={`p-4 rounded-2xl border-2 text-left transition-all relative overflow-hidden ${savingsForm.productId === p.id ? 'border-indigo-600 bg-indigo-50' : 'border-slate-100 hover:border-indigo-200'}`}
+                         className={`group p-6 rounded-3xl border-2 text-left transition-all relative overflow-hidden ${savingsForm.productId === p.id ? 'border-indigo-600 bg-indigo-50/50' : 'border-slate-100 hover:border-slate-200 hover:bg-slate-50'}`}
                        >
-                         {!p.isOpen && <div className="absolute inset-0 bg-slate-900/10 backdrop-blur-[1px] flex items-center justify-center font-black text-slate-600 gap-2"><Lock size={16} /> 미오픈</div>}
-                         <div className="flex justify-between items-center">
-                           <span className="font-black text-lg">{p.name}</span>
-                           <span className="bg-indigo-600 text-white px-3 py-1 rounded-full text-xs font-bold">{p.rate} 이자</span>
+                         {!p.isOpen && <div className="absolute inset-0 bg-slate-100/60 backdrop-blur-[2px] z-10 flex items-center justify-center font-black text-slate-400 gap-2"><Lock size={18} /> 현재 가입 기간이 아닙니다</div>}
+                         <div className="flex justify-between items-start mb-2">
+                           <div><span className="font-black text-xl block">{p.name}</span><span className="text-xs font-bold text-slate-400">{p.period} 거치</span></div>
+                           <span className="bg-indigo-600 text-white px-4 py-1.5 rounded-xl text-xs font-black shadow-lg shadow-indigo-100">이자율 {p.rate}</span>
                          </div>
-                         <div className="text-sm text-slate-500 font-bold">{p.period} 만기 | {p.desc}</div>
+                         <p className="text-sm text-slate-500 font-medium leading-relaxed">{p.desc}</p>
                        </button>
                      ))}
                    </div>
                  </div>
-                 <input type="text" value={savingsForm.name} onChange={(e)=>setSavingsForm({...savingsForm, name: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500" placeholder="예금통장 별칭 입력 (예: 내 비상금)" />
-                 <input type="number" value={savingsForm.amount} onChange={(e)=>setSavingsForm({...savingsForm, amount: e.target.value})} className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border-2 border-transparent focus:border-indigo-500" placeholder="가입 금액 (G)" />
-                 <button onClick={joinSavings} className="w-full py-5 bg-indigo-600 text-white font-black rounded-2xl shadow-lg">예금 가입하기</button>
+                 <div className="space-y-4">
+                    <input type="text" value={savingsForm.name} onChange={(e)=>setSavingsForm({...savingsForm, name: e.target.value})} className="w-full p-5 bg-slate-50 rounded-2xl font-black outline-none border-2 border-transparent focus:border-indigo-500 focus:bg-white transition-all" placeholder="예금 통장 이름을 지어주세요" />
+                    <input type="number" value={savingsForm.amount} onChange={(e)=>setSavingsForm({...savingsForm, amount: e.target.value})} className="w-full p-5 bg-slate-50 rounded-2xl font-black outline-none border-2 border-transparent focus:border-indigo-500 focus:bg-white transition-all" placeholder="입금할 금액 (G)" />
+                 </div>
+                 <button onClick={joinSavings} className="w-full py-6 bg-indigo-600 text-white font-black rounded-[1.5rem] shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all text-lg">가입 신청 완료</button>
                </div>
             </div>
-            <div className="bg-white rounded-3xl p-8 shadow-sm border">
-              <h3 className="font-black text-lg mb-6">내 예금 현황</h3>
+            
+            <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100">
+              <h3 className="font-black text-xl mb-8 flex items-center gap-2"><University size={24} className="text-slate-400" /> 가입된 예금 목록</h3>
               <div className="space-y-4">
                 {mySavings.length === 0 ? (
-                  <div className="text-center py-20 text-slate-300 font-bold">가입된 예금이 없습니다.</div>
+                  <div className="text-center py-28 text-slate-300 font-black">가입한 예금 상품이 없습니다.</div>
                 ) : mySavings.map(s => (
-                  <div key={s.id} className="p-5 bg-slate-50 rounded-2xl border flex justify-between items-center">
+                  <div key={s.id} className="p-6 bg-slate-50 rounded-3xl border border-slate-100 flex justify-between items-center group hover:bg-white hover:shadow-lg transition-all">
                     <div>
-                      <div className="font-black text-indigo-600">{s.accountName}</div>
-                      <div className="text-xs text-slate-400 font-bold">{s.name} ({s.rate}) | {s.startDate} 가입</div>
+                      <div className="font-black text-indigo-600 text-lg mb-1">{s.accountName}</div>
+                      <div className="text-xs text-slate-400 font-bold">{s.name} ({s.rate}) · {s.startDate} 가입</div>
                     </div>
-                    <div className="text-right">
-                      <div className="font-black text-lg">{s.amount.toLocaleString()} G</div>
-                      <div className="text-[10px] text-slate-400">만기 시 자동 해지</div>
+                    <div className="text-right font-black">
+                      <div className="text-2xl text-slate-800">{s.amount.toLocaleString()} <span className="text-sm">G</span></div>
+                      <div className="text-[10px] text-green-500 uppercase tracking-tighter">운용 중</div>
                     </div>
                   </div>
                 ))}
@@ -477,111 +502,128 @@ export default function App() {
         )}
 
         {activeTab === 'fine' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
             {isAdmin ? (
-              <div className="bg-white rounded-3xl p-8 shadow-sm border">
-                <h3 className="text-2xl font-black mb-8 text-red-600 flex items-center gap-2"><ShieldAlert /> 벌금 부과</h3>
-                <div className="space-y-6">
+              <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100">
+                <h3 className="text-2xl font-black mb-10 text-rose-600 flex items-center gap-3"><ShieldAlert size={28} /> 벌금 고지서 발행</h3>
+                <div className="space-y-8">
                   <div>
-                    <label className="block text-sm font-bold text-slate-500 mb-2">학생 선택 ({selectedStudents.length}명)</label>
-                    <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-48 overflow-y-auto p-4 bg-slate-50 rounded-2xl">
+                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest px-1 mb-3 block">대상 학생 ({selectedStudents.length}명 선택됨)</label>
+                    <div className="grid grid-cols-4 sm:grid-cols-5 gap-2 max-h-56 overflow-y-auto p-4 bg-slate-50 rounded-3xl border border-slate-100">
                       {Object.values(students).sort((a,b)=>parseInt(a.num)-parseInt(b.num)).map(s => (
-                        <button key={s.uid} onClick={() => setSelectedStudents(prev => prev.includes(s.uid) ? prev.filter(id => id !== s.uid) : [...prev, s.uid])} className={`p-2 rounded-xl text-xs font-bold border-2 transition-all ${selectedStudents.includes(s.uid) ? 'bg-red-500 border-red-500 text-white' : 'bg-white border-slate-100 text-slate-600'}`}>{s.name}</button>
+                        <button key={s.uid} onClick={() => setSelectedStudents(prev => prev.includes(s.uid) ? prev.filter(id => id !== s.uid) : [...prev, s.uid])} className={`py-3 rounded-xl text-xs font-black border-2 transition-all ${selectedStudents.includes(s.uid) ? 'bg-rose-500 border-rose-500 text-white shadow-lg' : 'bg-white border-white text-slate-500 hover:border-rose-200'}`}>{s.name}</button>
                       ))}
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <input type="number" value={fineForm.amount} onChange={(e) => setFineForm({...fineForm, amount: e.target.value})} className="p-4 bg-slate-50 rounded-2xl font-bold outline-none" placeholder="금액 (G)" />
-                    <input type="text" value={fineForm.reason} onChange={(e) => setFineForm({...fineForm, reason: e.target.value})} className="p-4 bg-slate-50 rounded-2xl font-bold outline-none" placeholder="사유" />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <input type="number" value={fineForm.amount} onChange={(e) => setFineForm({...fineForm, amount: e.target.value})} className="p-5 bg-slate-50 rounded-2xl font-black outline-none border-2 border-transparent focus:border-rose-500 focus:bg-white transition-all" placeholder="벌금액 (G)" />
+                    <input type="text" value={fineForm.reason} onChange={(e) => setFineForm({...fineForm, reason: e.target.value})} className="p-5 bg-slate-50 rounded-2xl font-black outline-none border-2 border-transparent focus:border-rose-500 focus:bg-white transition-all" placeholder="사유 (예: 지각)" />
                   </div>
-                  <button onClick={submitFine} className="w-full py-5 bg-red-600 text-white font-black rounded-2xl">부과 확정</button>
+                  <button onClick={submitFine} className="w-full py-6 bg-rose-600 text-white font-black rounded-[1.5rem] shadow-xl shadow-rose-100 hover:bg-rose-700 transition-all">벌금 부과 확정</button>
                 </div>
               </div>
             ) : (
-              <div className="bg-white rounded-3xl p-8 shadow-sm border">
-                <h3 className="text-2xl font-black mb-8 text-red-600">내 벌금 내역</h3>
-                <div className="space-y-3">
+              <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100">
+                <h3 className="text-2xl font-black mb-10 text-rose-600">내 벌금 내역</h3>
+                <div className="space-y-4">
                   {fines.filter(f => f.studentId === currentUserData.uid).map((f, i) => (
-                    <div key={i} className="p-5 bg-red-50 rounded-2xl border-l-4 border-red-500 flex justify-between">
-                      <div><div className="font-black text-red-700">{f.reason}</div><div className="text-xs text-slate-400 font-bold">{f.date}</div></div>
-                      <div className="font-black text-red-600">-{f.amount.toLocaleString()}G</div>
+                    <div key={i} className="p-6 bg-rose-50 rounded-3xl border border-rose-100 flex justify-between items-center">
+                      <div><div className="font-black text-rose-700 text-lg">{f.reason}</div><div className="text-xs text-rose-400 font-bold mt-1">{f.date}</div></div>
+                      <div className="font-black text-2xl text-rose-600">-{f.amount.toLocaleString()} <span className="text-sm">G</span></div>
                     </div>
                   ))}
-                  {fines.filter(f => f.studentId === currentUserData.uid).length === 0 && <div className="text-center py-20 text-slate-300 font-bold">깨끗한 경제 생활! 받은 벌금이 없습니다.</div>}
+                  {fines.filter(f => f.studentId === currentUserData.uid).length === 0 && <div className="text-center py-28 text-slate-300 font-black">부과된 벌금이 없습니다. 훌륭합니다!</div>}
                 </div>
               </div>
             )}
-            <div className="bg-white rounded-3xl p-8 shadow-sm border h-fit">
-              <h3 className="font-black text-lg mb-6">전체 벌금 기록</h3>
-              <div className="space-y-3 max-h-[500px] overflow-y-auto">
+            <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100">
+              <h3 className="font-black text-xl mb-8">전체 징수 현황</h3>
+              <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
                 {fines.map((f, i) => (
-                  <div key={i} className="p-4 bg-slate-50 rounded-xl border flex justify-between">
-                    <div><div className="font-black">{f.studentName}</div><div className="text-xs text-slate-400">{f.reason} | {f.date}</div></div>
-                    <div className="text-red-600 font-black">-{f.amount.toLocaleString()}G</div>
+                  <div key={i} className="p-5 bg-slate-50 rounded-2xl border border-slate-100 flex justify-between items-center group">
+                    <div><div className="font-black text-slate-800">{f.studentName}</div><div className="text-xs text-slate-400 font-bold">{f.reason} · {f.date}</div></div>
+                    <div className="text-rose-500 font-black text-lg">-{f.amount.toLocaleString()}G</div>
                   </div>
                 ))}
-                {fines.length === 0 && <div className="text-center py-10 text-slate-300 font-bold">기록된 벌금이 없습니다.</div>}
+                {fines.length === 0 && <div className="text-center py-10 text-slate-300 font-black">징수된 벌금이 없습니다.</div>}
               </div>
             </div>
           </div>
         )}
 
         {activeTab === 'issue' && isAdmin && (
-          <div className="max-w-3xl mx-auto bg-white rounded-3xl p-8 shadow-sm border">
-            <h3 className="text-2xl font-black mb-8 text-indigo-600 flex items-center gap-2"><Banknote /> 화폐 발행</h3>
-            <div className="space-y-8">
-               <div className="flex flex-wrap gap-2 p-5 bg-slate-50 rounded-2xl border-2 border-dashed">
-                  {Object.values(students).sort((a,b)=>parseInt(a.num)-parseInt(b.num)).map(s => (
-                     <button key={s.uid} onClick={() => setSelectedStudents(prev => prev.includes(s.uid) ? prev.filter(id => id !== s.uid) : [...prev, s.uid])} className={`px-4 py-2 rounded-xl text-sm font-bold border transition-all ${selectedStudents.includes(s.uid) ? 'bg-indigo-600 text-white' : 'bg-white text-slate-400'}`}>{s.name}</button>
-                  ))}
+          <div className="max-w-4xl mx-auto bg-white rounded-[3rem] p-12 shadow-sm border border-slate-100">
+            <h3 className="text-3xl font-black mb-12 text-indigo-600 flex items-center gap-4"><Banknote size={40} /> 화폐 발행 및 월급 지급</h3>
+            <div className="space-y-10">
+               <div className="space-y-4">
+                 <label className="text-xs font-black text-slate-400 uppercase tracking-widest px-1 block">지급 대상 학생</label>
+                 <div className="flex flex-wrap gap-2.5 p-6 bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-200">
+                    {Object.values(students).sort((a,b)=>parseInt(a.num)-parseInt(b.num)).map(s => (
+                       <button key={s.uid} onClick={() => setSelectedStudents(prev => prev.includes(s.uid) ? prev.filter(id => id !== s.uid) : [...prev, s.uid])} className={`px-5 py-2.5 rounded-xl text-sm font-black border transition-all ${selectedStudents.includes(s.uid) ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-white border-slate-200 text-slate-400 hover:border-indigo-300'}`}>{s.name}</button>
+                    ))}
+                 </div>
                </div>
-               <div className="grid grid-cols-2 gap-4">
-                  <input type="number" value={issueForm.amount} onChange={(e) => setIssueForm({...issueForm, amount: e.target.value})} className="p-5 bg-slate-50 rounded-2xl font-black text-xl outline-none" placeholder="금액" />
-                  <input type="text" value={issueForm.reason} onChange={(e) => setIssueForm({...issueForm, reason: e.target.value})} className="p-5 bg-slate-50 rounded-2xl font-black text-xl outline-none" placeholder="지급 사유" />
+               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  <div className="space-y-3">
+                    <label className="text-xs font-black text-slate-400 px-1">지급 금액</label>
+                    <input type="number" value={issueForm.amount} onChange={(e) => setIssueForm({...issueForm, amount: e.target.value})} className="w-full p-6 bg-slate-50 rounded-3xl font-black text-3xl outline-none focus:bg-white focus:ring-4 focus:ring-indigo-50 transition-all" placeholder="0 G" />
+                  </div>
+                  <div className="space-y-3">
+                    <label className="text-xs font-black text-slate-400 px-1">지급 사유</label>
+                    <input type="text" value={issueForm.reason} onChange={(e) => setIssueForm({...issueForm, reason: e.target.value})} className="w-full p-6 bg-slate-50 rounded-3xl font-black text-xl outline-none focus:bg-white focus:ring-4 focus:ring-indigo-50 transition-all" placeholder="예: 월급 지급" />
+                  </div>
                </div>
-               <button onClick={handleIssueCurrency} className="w-full py-6 bg-indigo-600 text-white font-black text-xl rounded-2xl">발행 승인</button>
+               <button onClick={handleIssueCurrency} className="w-full py-8 bg-indigo-600 text-white font-black text-2xl rounded-[2rem] shadow-2xl shadow-indigo-100 hover:bg-indigo-700 hover:scale-[1.01] transition-all active:scale-95">화폐 발행 및 지급 승인</button>
             </div>
           </div>
         )}
 
         {activeTab === 'settings' && (
-          <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="bg-white rounded-3xl p-8 shadow-sm border">
-              <h3 className="text-xl font-black mb-6 flex items-center gap-2"><UserCircle /> 프로필 관리</h3>
+          <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-10">
+            <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100">
+              <h3 className="text-2xl font-black mb-8 flex items-center gap-3"><UserCircle size={28} className="text-indigo-500" /> 내 계정 정보</h3>
               <div className="space-y-6">
-                 <div className="bg-slate-50 p-6 rounded-2xl space-y-4">
-                    <div className="flex justify-between font-bold"><span>이름</span><span>{myData.name}</span></div>
-                    <div className="flex justify-between font-bold"><span>아이디</span><span>{myData.id}</span></div>
-                    <div className="flex justify-between font-bold items-center">
-                      <span>비밀번호</span>
+                 <div className="bg-slate-50 p-8 rounded-[2rem] space-y-6 border border-slate-100">
+                    <div className="flex justify-between items-center"><span className="font-bold text-slate-400">사용자 이름</span><span className="font-black text-lg">{myData.name}</span></div>
+                    <div className="flex justify-between items-center"><span className="font-bold text-slate-400">아이디</span><span className="font-black text-lg">{myData.id}</span></div>
+                    <div className="flex justify-between items-center pt-4 border-t border-slate-200">
+                      <span className="font-bold text-slate-400">비밀번호 확인</span>
                       {!isPwVerified ? (
                         <div className="flex gap-2">
-                          <input type="password" value={pwInputForCheck} onChange={(e) => setPwInputForCheck(e.target.value)} className="w-20 p-1 border rounded text-xs" placeholder="입력" />
-                          <button onClick={() => { if(pwInputForCheck === myData.pw) setIsPwVerified(true); else alert("불일치"); setPwInputForCheck(''); }} className="bg-slate-800 text-white px-2 py-1 rounded text-xs">확인</button>
+                          <input type="password" id="checkPwInput" className="w-24 p-2 bg-white border rounded-xl text-center font-bold outline-none focus:border-indigo-500" placeholder="PIN" />
+                          <button onClick={() => { 
+                            const val = document.getElementById('checkPwInput').value;
+                            if(val === myData.pw) setIsPwVerified(true); else alert("비밀번호가 틀립니다."); 
+                          }} className="bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-black">확인</button>
                         </div>
-                      ) : <span className="text-indigo-600 font-bold">{myData.pw}</span>}
+                      ) : <span className="text-indigo-600 font-black text-lg tracking-widest">{myData.pw}</span>}
                     </div>
                  </div>
               </div>
             </div>
+            
             {isAdmin && (
-              <div className="bg-white rounded-3xl p-8 shadow-sm border">
-                <h3 className="text-xl font-black mb-6 flex items-center gap-2"><Users /> 학생 관리</h3>
-                <input type="text" placeholder="학생 검색" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full p-3 bg-slate-50 rounded-xl font-bold mb-4 outline-none" />
-                <div className="space-y-2 max-h-96 overflow-y-auto">
+              <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100">
+                <h3 className="text-2xl font-black mb-8 flex items-center gap-3"><Users size={28} className="text-slate-400" /> 학생 명부 관리</h3>
+                <div className="relative mb-6">
+                  <input type="text" placeholder="이름으로 학생 찾기..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full p-5 bg-slate-50 rounded-2xl font-black outline-none border-2 border-transparent focus:border-indigo-500 focus:bg-white transition-all pl-12" />
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 font-black">검색</div>
+                </div>
+                <div className="space-y-3 max-h-[450px] overflow-y-auto pr-2 custom-scrollbar">
                   {Object.values(students).filter(s => s.name.includes(searchQuery)).sort((a,b)=>parseInt(a.num)-parseInt(b.num)).map(s => (
-                    <div key={s.uid} className="p-3 bg-slate-50 rounded-xl flex justify-between items-center border">
-                       <div>
-                         <div className="font-black text-sm">{s.name} ({s.num}번)</div>
-                         <div className="text-[10px] text-slate-400">ID: {s.id} | PW: {s.pw}</div>
+                    <div key={s.uid} className="p-4 bg-slate-50 rounded-2xl flex justify-between items-center border border-slate-100 group hover:bg-white hover:shadow-md transition-all">
+                       <div className="flex items-center gap-4">
+                         <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center font-black text-slate-500 text-xs">{s.num}</div>
+                         <div>
+                           <div className="font-black text-slate-800">{s.name}</div>
+                           <div className="text-[10px] text-slate-400 font-bold uppercase">ID: {s.id} · PIN: {s.pw}</div>
+                         </div>
                        </div>
-                       <div className="flex gap-1">
-                         <button onClick={async () => {
-                           const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'students', s.uid);
-                           await updateDoc(sRef, { pw: `67${s.num}`, isReset: true });
-                           alert(`${s.name} 비번 초기화 완료.`);
-                         }} className="p-2 text-orange-500 bg-white rounded-lg shadow-sm"><RefreshCcw size={14} /></button>
-                       </div>
+                       <button onClick={async () => {
+                         const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'students', s.uid);
+                         await updateDoc(sRef, { pw: `67${s.num}` });
+                         alert(`${s.name}의 비밀번호를 67${s.num}으로 초기화했습니다.`);
+                       }} className="p-2.5 text-orange-500 bg-white rounded-xl shadow-sm hover:bg-orange-50 transition-colors"><RefreshCcw size={16} /></button>
                     </div>
                   ))}
                 </div>
