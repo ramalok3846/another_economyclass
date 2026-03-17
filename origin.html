@@ -1,637 +1,523 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { initializeApp } from 'firebase/app';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  getAuth, 
-  signInAnonymously, 
-  signInWithCustomToken,
-  onAuthStateChanged 
-} from 'firebase/auth';
-import { 
-  getFirestore, 
-  doc, 
-  setDoc, 
-  collection, 
-  onSnapshot, 
-  updateDoc, 
-  addDoc, 
-  arrayUnion
-} from 'firebase/firestore';
-import { 
-  GraduationCap, 
-  History, 
-  ChartPie, 
-  ShieldAlert, 
-  University, 
-  LogOut, 
-  Coins, 
-  Banknote,
-  Settings,
-  UserCircle,
-  Users,
-  RefreshCcw,
-  PlusCircle,
-  ChevronRight,
-  Info,
-  Lock
+  Wallet, History, Settings, LogOut, PlusCircle, MinusCircle, 
+  ShieldCheck, User, Lock, Clock, TrendingUp, XCircle, 
+  AlertTriangle, Banknote, ChevronRight, Eye, EyeOff, RefreshCw
 } from 'lucide-react';
 
-// --- Firebase 설정 ---
-const firebaseConfig = JSON.parse(__firebase_config);
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'another-economy-class-v3';
-
+// --- 초기 학생 데이터 (이미지 참조) ---
 const INITIAL_STUDENTS = [
-  { id: "1", name: "강유주", gender: "여", num: "01" },
-  { id: "2", name: "고윤서", gender: "여", num: "02" },
-  { id: "3", name: "공윤호", gender: "남", num: "03" },
-  { id: "4", name: "김성민", gender: "남", num: "04" },
-  { id: "5", name: "김태윤", gender: "남", num: "05" },
-  { id: "6", name: "나현웅", gender: "남", num: "06" },
-  { id: "7", name: "류찬혁", gender: "남", num: "07" },
-  { id: "8", name: "문예린", gender: "여", num: "08" },
-  { id: "9", name: "박소율", gender: "여", num: "09" },
-  { id: "10", name: "박채윤", gender: "여", num: "10" },
-  { id: "11", name: "배예람", gender: "여", num: "11" },
-  { id: "12", name: "백한율", gender: "남", num: "12" },
-  { id: "13", name: "우은서", gender: "여", num: "13" },
-  { id: "14", name: "우진서", gender: "여", num: "14" },
-  { id: "15", name: "윤소영", gender: "여", num: "15" },
-  { id: "16", name: "임소윤", gender: "여", num: "16" },
-  { id: "17", name: "임수현", gender: "여", num: "17" },
-  { id: "18", name: "정시후", gender: "남", num: "18" },
-  { id: "19", name: "조수빈", gender: "여", num: "19" },
-  { id: "20", name: "최리한", gender: "남", num: "20" },
-  { id: "21", name: "최은수", gender: "남", num: "21" },
-  { id: "22", name: "최준성", gender: "남", num: "22" },
-  { id: "23", name: "하예준", gender: "남", num: "23" },
-  { id: "24", name: "허단", gender: "남", num: "24" }
+  { id: '6701', name: '강유주', password: '6701', balance: 0, role: 'student', subscriptions: [] },
+  { id: '6702', name: '고은서', password: '6702', balance: 0, role: 'student', subscriptions: [] },
+  { id: '6703', name: '공은호', password: '6703', balance: 0, role: 'student', subscriptions: [] },
+  { id: '6704', name: '김성민', password: '6704', balance: 0, role: 'student', subscriptions: [] },
+  { id: '6705', name: '김태은', password: '6705', balance: 0, role: 'student', subscriptions: [] },
+  { id: '6706', name: '나현웅', password: '6706', balance: 0, role: 'student', subscriptions: [] },
+  { id: '6707', name: '류찬혁', password: '6707', balance: 0, role: 'student', subscriptions: [] },
+  { id: '6708', name: '문예원', password: '6708', balance: 0, role: 'student', subscriptions: [] },
+  { id: '6709', name: '박소율', password: '6709', balance: 0, role: 'student', subscriptions: [] },
+  { id: '6710', name: '박채은', password: '6710', balance: 0, role: 'student', subscriptions: [] },
+  { id: '6711', name: '배예람', password: '6711', balance: 0, role: 'student', subscriptions: [] },
+  { id: '6712', name: '백한울', password: '6712', balance: 0, role: 'student', subscriptions: [] },
+  { id: '6713', name: '우은서', password: '6713', balance: 0, role: 'student', subscriptions: [] },
+  { id: '6714', name: '우진서', password: '6714', balance: 0, role: 'student', subscriptions: [] },
+  { id: '6715', name: '윤소영', password: '6715', balance: 0, role: 'student', subscriptions: [] },
+  { id: '6716', name: '임소은', password: '6716', balance: 0, role: 'student', subscriptions: [] },
+  { id: '6717', name: '임수현', password: '6717', balance: 0, role: 'student', subscriptions: [] },
+  { id: '6718', name: '정시후', password: '6718', balance: 0, role: 'student', subscriptions: [] },
+  { id: '6719', name: '조수빈', password: '6719', balance: 0, role: 'student', subscriptions: [] },
+  { id: '6720', name: '최리한', password: '6720', balance: 0, role: 'student', subscriptions: [] },
+  { id: '6721', name: '최은수', password: '6721', balance: 0, role: 'student', subscriptions: [] },
+  { id: '6722', name: '최준성', password: '6722', balance: 0, role: 'student', subscriptions: [] },
+  { id: '6723', name: '하예준', password: '6723', balance: 0, role: 'student', subscriptions: [] },
+  { id: '6724', name: '허단', password: '6724', balance: 0, role: 'student', subscriptions: [] },
+  { id: 'admin', name: '관리자', password: '1234', role: 'admin', balance: 0 }
 ];
 
-const SAVINGS_PRODUCTS = [
-  { id: 'daily_4', name: '당일 예금', period: '24시간', rate: '4%', desc: '가장 빠르고 안전한 수익', isOpen: true },
-  { id: 'event_1.5', name: '대박 예금(이벤트)', period: '1분', rate: '1.5%', desc: '단 2일간의 특별한 기회!', isOpen: false }
-];
-
-export default function App() {
-  const [firebaseUser, setFirebaseUser] = useState(null);
-  const [loginMode, setLoginMode] = useState('student');
+const App = () => {
+  const [students, setStudents] = useState(INITIAL_STUDENTS);
+  const [user, setUser] = useState(null);
+  const [view, setView] = useState('login'); // login, dashboard, history, savings, settings
+  const [history, setHistory] = useState([]);
+  const [savingsProducts, setSavingsProducts] = useState([
+    { id: 1, name: '성장 예금', rate: 5, period: 30, isOpen: true },
+  ]);
   const [loginId, setLoginId] = useState('');
   const [loginPw, setLoginPw] = useState('');
-  
-  const [students, setStudents] = useState({});
-  const [fines, setFines] = useState([]);
-  const [activeTab, setActiveTab] = useState('home');
-  const [currentUserData, setCurrentUserData] = useState(null);
-  
-  const [bannerIndex, setBannerIndex] = useState(0);
-  const banners = [
-    {
-      title: "📢 경제교실 이름 공모전(1차) 행사 진행 중!",
-      desc: "여러분의 창의적인 아이디어를 기다립니다. 클릭하여 참여하세요.",
-      link: "https://naver.me/xQJAYc2r",
-      color: "from-pink-500 via-purple-500 to-indigo-600"
-    },
-    {
-      title: "🔥 단 2일간 1분에 1.5%짜리 대박 예금 가입 행사 곧 OPEN!",
-      desc: "정확히 48시간 동안만 실시되는 혜택! 은행에서 상세 정보를 확인하세요.",
-      link: null,
-      color: "from-orange-500 via-red-500 to-pink-600"
-    }
-  ];
+  const [sessionTime, setSessionTime] = useState(600);
+  const [toast, setToast] = useState(null);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [isPwVisible, setIsPwVisible] = useState(false);
 
-  const [savingsForm, setSavingsForm] = useState({ productId: '', amount: '', name: '' });
-  const [mySavings, setMySavings] = useState([]);
-  const [fineForm, setFineForm] = useState({ amount: '', reason: '' });
-  const [issueForm, setIssueForm] = useState({ amount: '', reason: '' });
-  const [selectedStudents, setSelectedStudents] = useState([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isPwVerified, setIsPwVerified] = useState(false);
+  // --- Helpers ---
+  const showToast = (text, type = 'info') => {
+    setToast({ text, type });
+    setTimeout(() => setToast(null), 3000);
+  };
 
-  const idInputRef = useRef(null);
-
-  // 배너 타이머
+  // --- Session Management ---
   useEffect(() => {
-    const timer = setInterval(() => setBannerIndex((prev) => (prev + 1) % banners.length), 5000);
+    let timer;
+    if (user && sessionTime > 0) {
+      timer = setInterval(() => setSessionTime(prev => prev - 1), 1000);
+    } else if (sessionTime === 0 && user) {
+      handleLogout(true);
+    }
     return () => clearInterval(timer);
-  }, [banners.length]);
+  }, [user, sessionTime]);
 
-  // 1. 인증 초기화
-  useEffect(() => {
-    const initAuth = async () => {
-      try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
-      } catch (err) {
-        console.error("Auth Init Failed:", err);
-      }
-    };
-    initAuth();
-    const unsubscribe = onAuthStateChanged(auth, (u) => setFirebaseUser(u));
-    return () => unsubscribe();
-  }, []);
+  const handleLogout = (auto = false) => {
+    setUser(null);
+    setView('login');
+    setLoginId('');
+    setLoginPw('');
+    setShowLogoutConfirm(false);
+    setIsPwVisible(false);
+    showToast(auto ? '세션이 만료되었습니다.' : '로그아웃 되었습니다.', 'success');
+  };
 
-  // 2. 공용 데이터 감시 (학생 목록, 벌금 내역)
-  useEffect(() => {
-    if (!firebaseUser) return;
-
-    const studentsRef = collection(db, 'artifacts', appId, 'public', 'data', 'students');
-    const unsubStudents = onSnapshot(studentsRef, (snapshot) => {
-      const data = {};
-      if (snapshot.empty) {
-        INITIAL_STUDENTS.forEach(async (s) => {
-          const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'students', s.name);
-          await setDoc(sRef, {
-            uid: s.name, name: s.name, id: s.name, pw: `67${s.num}`, num: s.num,
-            gender: s.gender, balance: 0, role: 'student', themeColor: '#6366f1', history: []
-          });
-        });
-      }
-      snapshot.forEach(doc => { data[doc.id] = doc.data(); });
-      setStudents(data);
-    }, (err) => console.error("Students Listener Error:", err));
-
-    const finesRef = collection(db, 'artifacts', appId, 'public', 'data', 'fines');
-    const unsubFines = onSnapshot(finesRef, (snapshot) => {
-      const list = [];
-      snapshot.forEach(doc => { list.push({ id: doc.id, ...doc.data() }); });
-      setFines(list.sort((a,b) => b.timestamp - a.timestamp));
-    }, (err) => console.error("Fines Listener Error:", err));
-
-    return () => { unsubStudents(); unsubFines(); };
-  }, [firebaseUser]);
-
-  // 3. 내 예금 감시 (수정: 관리자일 때는 감시하지 않음 - 권한 에러 해결)
-  useEffect(() => {
-    if (!firebaseUser || !currentUserData || currentUserData.role === 'admin' || !currentUserData.uid) {
-      setMySavings([]);
-      return;
-    }
-    const savingsRef = collection(db, 'artifacts', appId, 'users', currentUserData.uid, 'savings');
-    const unsubSavings = onSnapshot(savingsRef, (snapshot) => {
-      const list = [];
-      snapshot.forEach(doc => { list.push({ id: doc.id, ...doc.data() }); });
-      setMySavings(list);
-    }, (err) => {
-      // 권한 에러가 발생해도 앱이 멈추지 않게 처리
-      if (err.code !== 'permission-denied') {
-        console.error("Savings Listener Error:", err);
-      }
-    });
-    return () => unsubSavings();
-  }, [firebaseUser, currentUserData]);
-
-  // 포커스 로직
-  useEffect(() => {
-    if (!currentUserData && idInputRef.current) {
-      const timer = setTimeout(() => {
-        idInputRef.current.focus();
-      }, 200);
-      return () => clearTimeout(timer);
-    }
-  }, [currentUserData, loginMode]);
-
-  // 로그인 처리 (수정: 관리자 로그인 강제 처리)
   const handleLogin = (e) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-
-    const trimmedId = loginId.trim();
-    const trimmedPw = loginPw.trim();
-
-    if (loginMode === 'admin') {
-      if (trimmedId === 'manager1' && trimmedPw === 'ramalok*') {
-        setCurrentUserData({ uid: 'admin_root', name: '관리자', role: 'admin' });
-        setLoginId('');
-        setLoginPw('');
-        setActiveTab('home');
-      } else {
-        alert("관리자 계정 정보가 일치하지 않습니다.");
-      }
+    e.preventDefault();
+    const found = students.find(s => s.id === loginId && s.password === loginPw);
+    if (found) {
+      setUser(found);
+      setView('dashboard');
+      setSessionTime(600);
+      showToast('로그인 성공!', 'success');
     } else {
-      const matched = Object.values(students).find(s => s.id === trimmedId && s.pw === trimmedPw);
-      if (matched) {
-        setCurrentUserData(matched);
-        setLoginId('');
-        setLoginPw('');
-        setActiveTab('home');
-      } else {
-        alert("학생 아이디 또는 비밀번호를 확인하세요.");
+      showToast('로그인 실패: 아이디 또는 비밀번호 확인', 'error');
+    }
+  };
+
+  // --- Admin Actions ---
+  const handleIssuance = (targetId, amount, isPenalty = false) => {
+    const val = parseInt(amount);
+    if (isNaN(val)) return;
+
+    setStudents(prev => prev.map(s => {
+      if (s.id === targetId) return { ...s, balance: isPenalty ? s.balance - val : s.balance + val };
+      return s;
+    }));
+
+    const log = {
+      id: Date.now(),
+      type: isPenalty ? 'penalty' : 'issue',
+      targetId,
+      targetName: students.find(s => s.id === targetId).name,
+      amount: val,
+      date: new Date().toLocaleString(),
+      status: 'active'
+    };
+    setHistory(prev => [log, ...prev]);
+    showToast(isPenalty ? '벌금이 부과되었습니다.' : '화폐가 발행되었습니다.', 'success');
+  };
+
+  const handleCancel = (logId, isPartial = false) => {
+    const log = history.find(h => h.id === logId);
+    if (!log || log.status === 'cancelled') return;
+
+    let cancelVal = log.amount;
+    if (isPartial) {
+      const input = prompt('취소할 금액을 입력하세요.');
+      if (!input) return;
+      cancelVal = parseInt(input);
+    }
+
+    setStudents(prev => prev.map(s => {
+      if (s.id === log.targetId) {
+        const factor = log.type === 'issue' ? -1 : 1;
+        return { ...s, balance: s.balance + (cancelVal * factor) };
       }
+      return s;
+    }));
+
+    if (!isPartial || cancelVal >= log.amount) {
+      setHistory(prev => prev.map(h => h.id === logId ? { ...h, status: 'cancelled' } : h));
+    } else {
+      setHistory(prev => prev.map(h => h.id === logId ? { ...h, amount: h.amount - cancelVal } : h));
     }
+    showToast('취소 처리가 완료되었습니다.', 'success');
   };
 
-  const joinSavings = async () => {
-    const amount = parseInt(savingsForm.amount);
-    if (!savingsForm.productId || isNaN(amount) || !savingsForm.name) return alert("빈칸을 모두 채워주세요.");
-    
-    const product = SAVINGS_PRODUCTS.find(p => p.id === savingsForm.productId);
-    if (!product.isOpen) return alert("대박 예금은 현재 미오픈 상태입니다!");
-    
-    const myBalance = students[currentUserData.uid]?.balance || 0;
-    if (amount > myBalance) return alert("잔액이 부족합니다.");
+  // --- Savings Actions ---
+  const joinSavings = (product, amount) => {
+    const val = parseInt(amount);
+    if (user.balance < val) return showToast('잔액이 부족합니다.', 'error');
 
-    try {
-      const dateStr = new Date().toLocaleString();
-      const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'students', currentUserData.uid);
-      
-      await updateDoc(sRef, {
-        balance: myBalance - amount,
-        history: arrayUnion({ type: '차감', amount, reason: `예금 가입: ${savingsForm.name}`, date: dateStr })
-      });
+    const newSub = {
+      id: Date.now(),
+      productName: product.name,
+      amount: val,
+      interest: Math.floor(val * (product.rate / 100)),
+      date: new Date().toLocaleDateString()
+    };
 
-      await addDoc(collection(db, 'artifacts', appId, 'users', currentUserData.uid, 'savings'), {
-        ...product,
-        accountName: savingsForm.name,
-        amount: amount,
-        startDate: dateStr,
-        timestamp: Date.now()
-      });
-
-      alert("예금 가입 성공!");
-      setSavingsForm({ productId: '', amount: '', name: '' });
-    } catch (e) {
-      alert("서버 통신 중 오류 발생");
-    }
+    setStudents(prev => prev.map(s => {
+      if (s.id === user.id) return { ...s, balance: s.balance - val, subscriptions: [...(s.subscriptions || []), newSub] };
+      return s;
+    }));
+    setUser(prev => ({ ...prev, balance: prev.balance - val, subscriptions: [...(prev.subscriptions || []), newSub] }));
+    showToast('예금 가입 성공!', 'success');
   };
 
-  const submitFine = async () => {
-    if (selectedStudents.length === 0 || !fineForm.amount) return alert("대상과 금액을 입력하세요.");
-    const amount = parseInt(fineForm.amount);
-    const dateStr = new Date().toLocaleString();
-    
-    for (const sId of selectedStudents) {
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'fines'), {
-        studentId: sId, studentName: students[sId].name,
-        amount, reason: fineForm.reason || '규칙 위반',
-        timestamp: Date.now(), date: dateStr
-      });
-      const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'students', sId);
-      await updateDoc(sRef, {
-        balance: (students[sId].balance || 0) - amount,
-        history: arrayUnion({ type: '차감', amount, reason: `벌금: ${fineForm.reason || '규칙 위반'}`, date: dateStr })
-      });
-    }
-    alert("벌금 부과 완료.");
-    setFineForm({ amount: '', reason: '' });
-    setSelectedStudents([]);
+  const cancelSavings = (subId, isEarly = true) => {
+    const sub = user.subscriptions.find(s => s.id === subId);
+    const refund = isEarly ? sub.amount : sub.amount + sub.interest;
+
+    setStudents(prev => prev.map(s => {
+      if (s.id === user.id) return { ...s, balance: s.balance + refund, subscriptions: s.subscriptions.filter(x => x.id !== subId) };
+      return s;
+    }));
+    setUser(prev => ({ ...prev, balance: prev.balance + refund, subscriptions: prev.subscriptions.filter(x => x.id !== subId) }));
+    showToast(isEarly ? '중도해지 완료 (이자없음)' : '만기해지 완료 (이자포함)', 'success');
   };
 
-  const handleIssueCurrency = async () => {
-    if (selectedStudents.length === 0 || !issueForm.amount) return alert("대상과 금액을 입력하세요.");
-    const amount = parseInt(issueForm.amount);
-    const dateStr = new Date().toLocaleString();
-
-    for (const sId of selectedStudents) {
-      const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'students', sId);
-      await updateDoc(sRef, {
-        balance: (students[sId].balance || 0) + amount,
-        history: arrayUnion({ type: '지급', amount, reason: issueForm.reason || '기타 지급', date: dateStr })
-      });
-    }
-    alert("발행 성공.");
-    setIssueForm({ amount: '', reason: '' });
-    setSelectedStudents([]);
-  };
-
-  // 대기 화면
-  if (!firebaseUser) return <div className="h-screen flex items-center justify-center bg-slate-50 font-black text-indigo-600">서버 연결 중...</div>;
-
-  // 로그인 화면
-  if (!currentUserData) {
+  // --- Views ---
+  if (view === 'login') {
     return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-        <div className="bg-white rounded-[2.5rem] shadow-2xl flex flex-col md:flex-row w-full max-w-5xl overflow-hidden">
-          <div className="md:w-1/2 bg-gradient-to-br from-indigo-600 to-purple-700 p-12 text-white flex flex-col justify-center">
-            <div className="mb-8 bg-white/20 p-4 rounded-3xl w-fit"><GraduationCap size={48} /></div>
-            <h1 className="text-4xl font-black mb-4">또다른<br />경제교실</h1>
-            <p className="text-indigo-100 text-lg opacity-80 font-medium tracking-tight">성장하는 우리들의 작은 경제 생태계</p>
-          </div>
-          <div className="md:w-1/2 p-12 flex flex-col justify-center bg-white">
-            <div className="flex bg-slate-100 p-1 rounded-2xl mb-10">
-              <button type="button" onClick={() => setLoginMode('student')} className={`flex-1 py-4 rounded-xl font-black transition-all ${loginMode === 'student' ? 'bg-white shadow-md text-indigo-600' : 'text-slate-400'}`}>학생 로그인</button>
-              <button type="button" onClick={() => setLoginMode('admin')} className={`flex-1 py-4 rounded-xl font-black transition-all ${loginMode === 'admin' ? 'bg-white shadow-md text-indigo-600' : 'text-slate-400'}`}>관리자 로그인</button>
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-white rounded-[2.5rem] shadow-2xl p-10 border border-slate-100">
+          <div className="flex flex-col items-center mb-8">
+            <div className="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center text-white mb-4 shadow-lg shadow-indigo-100">
+              <Wallet size={32} />
             </div>
-            <form onSubmit={handleLogin} className="space-y-6">
-              <div>
-                <label className="block text-xs font-black text-slate-400 mb-2 px-1 uppercase tracking-widest">아이디 (이름 또는 학번)</label>
-                <input 
-                  ref={idInputRef} 
-                  type="text" 
-                  value={loginId} 
-                  onChange={(e) => setLoginId(e.target.value)} 
-                  className="w-full p-5 bg-slate-50 border-2 border-slate-50 rounded-2xl focus:border-indigo-500 focus:bg-white outline-none font-bold transition-all" 
-                  placeholder={loginMode === 'admin' ? "관리자 아이디를 입력하세요" : "이름이나 학번을 입력하세요"} 
-                  required 
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-black text-slate-400 mb-2 px-1 uppercase tracking-widest">비밀번호 (PIN)</label>
-                <input 
-                  type="password" 
-                  value={loginPw} 
-                  onChange={(e) => setLoginPw(e.target.value)} 
-                  className="w-full p-5 bg-slate-50 border-2 border-slate-50 rounded-2xl focus:border-indigo-500 focus:bg-white outline-none font-bold transition-all" 
-                  placeholder="••••••••" 
-                  required 
-                />
-              </div>
-              <button 
-                type="submit" 
-                className="w-full py-5 bg-indigo-600 text-white font-black rounded-2xl shadow-xl shadow-indigo-200 hover:bg-indigo-700 hover:-translate-y-1 transition-all active:scale-95"
-              >
-                교실 입장하기
-              </button>
-            </form>
+            <h1 className="text-2xl font-black text-slate-800">또다른 경제교실</h1>
+            <p className="text-slate-400 text-sm mt-1">로그인하여 자산을 관리하세요</p>
           </div>
+          <form onSubmit={handleLogin} className="space-y-4">
+            <input 
+              type="text" placeholder="아이디 (예: 6701)" 
+              className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 transition-all outline-none font-bold"
+              value={loginId} onChange={e => setLoginId(e.target.value)}
+            />
+            <input 
+              type="password" placeholder="비밀번호" 
+              className="w-full px-5 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-500 transition-all outline-none font-bold"
+              value={loginPw} onChange={e => setLoginPw(e.target.value)}
+            />
+            <button className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-bold text-lg shadow-lg shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all">로그인</button>
+          </form>
         </div>
+        {toast && <div className={`fixed top-10 px-6 py-3 rounded-full text-white font-bold animate-bounce ${toast.type === 'error' ? 'bg-red-500' : 'bg-indigo-600'}`}>{toast.text}</div>}
       </div>
     );
   }
 
-  const isAdmin = currentUserData.role === 'admin';
-  const myData = students[currentUserData.uid] || currentUserData;
-
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 pb-20">
-      {/* 배너 섹션 */}
-      <div className={`transition-all duration-700 bg-gradient-to-r ${banners[bannerIndex].color} p-4 text-white shadow-md overflow-hidden`}>
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-             <div className="bg-white/20 p-2 rounded-lg"><Info size={20} /></div>
-             <div>
-                <h4 className="font-black text-base">{banners[bannerIndex].title}</h4>
-                <p className="text-xs opacity-90 font-medium">{banners[bannerIndex].desc}</p>
-             </div>
-          </div>
-          {banners[bannerIndex].link && (
-            <a href={banners[bannerIndex].link} target="_blank" rel="noopener noreferrer" className="px-5 py-2 bg-white text-slate-900 rounded-full font-black text-xs hover:bg-slate-100 transition-colors flex items-center gap-1">
-              참여하기 <ChevronRight size={14} />
-            </a>
-          )}
+    <div className="min-h-screen bg-[#F8FAFC] text-slate-800 font-sans pb-20">
+      {/* Header */}
+      <header className="bg-white/80 backdrop-blur-md sticky top-0 z-40 px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white"><Wallet size={18}/></div>
+          <span className="font-black text-lg tracking-tight">또다른 경제교실</span>
         </div>
-      </div>
-
-      <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-xl border-b px-6 py-4 flex justify-between items-center shadow-sm">
+        <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl">
+          <button onClick={() => setView('dashboard')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${view === 'dashboard' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500'}`}>홈</button>
+          <button onClick={() => setView('savings')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${view === 'savings' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500'}`}>은행</button>
+          {user.role === 'admin' && <button onClick={() => setView('history')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${view === 'history' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500'}`}>관리</button>}
+          <button onClick={() => setView('settings')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${view === 'settings' ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-500'}`}>설정</button>
+        </div>
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-lg shadow-indigo-200">
-            <GraduationCap size={24} />
-          </div>
-          <span className="text-xl font-black tracking-tight">또다른 경제교실</span>
-        </div>
-        <nav className="hidden md:flex items-center gap-2 bg-slate-100 p-1 rounded-2xl">
-          {[
-            { id: 'home', label: '홈', icon: ChartPie },
-            { id: 'bank', label: '은행', icon: University },
-            { id: 'fine', label: '벌금', icon: ShieldAlert },
-            ...(isAdmin ? [{ id: 'issue', label: '발행', icon: Banknote }] : []),
-            { id: 'settings', label: '관리', icon: Settings }
-          ].map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-black text-sm transition-all ${activeTab === tab.id ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-              <tab.icon size={18} /> {tab.label}
-            </button>
-          ))}
-        </nav>
-        <div className="flex items-center gap-4">
-          <div className="text-right hidden sm:block">
-            <div className="text-[10px] text-slate-400 font-black uppercase tracking-widest">{isAdmin ? '마스터' : '학생'}</div>
-            <div className="font-black text-sm">{myData.name}</div>
-          </div>
-          <button onClick={() => setCurrentUserData(null)} className="p-2.5 bg-red-50 text-red-500 hover:bg-red-100 rounded-xl transition-colors"><LogOut size={20} /></button>
+          <span className="text-sm font-bold text-slate-500">{user.name} <span className="opacity-50 font-normal">{user.role === 'admin' ? '관리자' : '학생'}</span></span>
+          <button onClick={() => setShowLogoutConfirm(true)} className="p-2 text-red-400 hover:bg-red-50 rounded-lg"><LogOut size={20}/></button>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto p-6 md:p-8">
-        {activeTab === 'home' && (
+      {/* Main Content */}
+      <main className="max-w-5xl mx-auto p-6 space-y-8">
+        {view === 'dashboard' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2 bg-white rounded-[2rem] p-10 shadow-sm border border-slate-100 relative overflow-hidden group">
-               <div className="absolute -top-10 -right-10 p-20 opacity-5 group-hover:scale-110 transition-transform duration-700"><Coins size={200} /></div>
-               <h2 className="text-slate-400 font-black text-sm mb-2 uppercase tracking-widest">현재 보유 잔액</h2>
-               <div className="text-6xl font-black mb-10 tracking-tighter">{(myData.balance || 0).toLocaleString()} <span className="text-2xl text-slate-300 font-bold ml-1">G</span></div>
-               <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                 <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100"><div className="text-xs text-slate-400 font-bold mb-1">보유 현금</div><div className="font-black text-xl">{(myData.balance || 0).toLocaleString()}G</div></div>
-                 <div className="bg-indigo-50 p-6 rounded-3xl border border-indigo-100"><div className="text-xs text-indigo-400 font-bold mb-1">예치 예금</div><div className="font-black text-xl text-indigo-600">{(mySavings.reduce((a,b)=>a+b.amount,0)).toLocaleString()}G</div></div>
-                 <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 opacity-40 hidden sm:block"><div className="text-xs text-slate-400 font-bold mb-1">주식 자산</div><div className="font-black text-xl">0G</div></div>
-               </div>
-            </div>
-            
-            <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100">
-              <h3 className="font-black text-lg mb-6 flex items-center gap-2"><History className="text-indigo-500" size={22} /> 경제 리포트</h3>
-              <div className="space-y-4">
-                <div className="flex justify-between items-center p-5 bg-indigo-50 rounded-2xl border border-indigo-100"><span className="text-indigo-600 font-black text-sm">교실 총 통화량</span><span className="font-black text-lg">{(Object.values(students).reduce((a,b)=>a+(b.balance||0), 0)).toLocaleString()}G</span></div>
-                <div className="flex justify-between items-center p-5 bg-rose-50 rounded-2xl border border-rose-100"><span className="text-rose-600 font-black text-sm">누적 벌금액</span><span className="font-black text-lg text-rose-600">{(fines.reduce((a,b)=>a+b.amount, 0)).toLocaleString()}G</span></div>
-              </div>
-            </div>
-
-            <div className="lg:col-span-3 bg-white rounded-[2rem] p-10 shadow-sm border border-slate-100">
-               <h3 className="font-black text-xl mb-8">최근 활동 내역</h3>
-               <div className="space-y-4">
-                 {myData.history?.slice(-8).reverse().map((h, i) => (
-                   <div key={i} className="flex items-center justify-between p-5 bg-slate-50 hover:bg-white hover:shadow-md hover:border-slate-100 border border-transparent rounded-2xl transition-all">
-                     <div className="flex items-center gap-5">
-                       <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-lg ${h.type === '지급' ? 'bg-green-100 text-green-600' : 'bg-rose-100 text-rose-600'}`}>{h.type === '지급' ? '↑' : '↓'}</div>
-                       <div><div className="font-black text-slate-800">{h.reason}</div><div className="text-xs text-slate-400 font-bold mt-0.5">{h.date}</div></div>
-                     </div>
-                     <div className={`font-black text-xl ${h.type === '지급' ? 'text-green-600' : 'text-rose-600'}`}>{h.type === '지급' ? '+' : '-'}{h.amount.toLocaleString()} <span className="text-sm">G</span></div>
-                   </div>
-                 ))}
-                 {(!myData.history || myData.history.length === 0) && <div className="text-center py-20 text-slate-300 font-black text-lg">기록된 금융 활동이 없습니다.</div>}
-               </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'bank' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-            <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100">
-               <h3 className="text-2xl font-black mb-10 text-indigo-600 flex items-center gap-3"><PlusCircle size={28} /> 신규 예금 가입</h3>
-               <div className="space-y-8">
-                 <div className="space-y-4">
-                   <label className="text-xs font-black text-slate-400 uppercase tracking-widest px-1">상품 선택</label>
-                   <div className="grid grid-cols-1 gap-4">
-                     {SAVINGS_PRODUCTS.map(p => (
-                       <button
-                         key={p.id}
-                         onClick={() => setSavingsForm({...savingsForm, productId: p.id})}
-                         className={`group p-6 rounded-3xl border-2 text-left transition-all relative overflow-hidden ${savingsForm.productId === p.id ? 'border-indigo-600 bg-indigo-50/50' : 'border-slate-100 hover:border-slate-200 hover:bg-slate-50'}`}
-                       >
-                         {!p.isOpen && <div className="absolute inset-0 bg-slate-100/60 backdrop-blur-[2px] z-10 flex items-center justify-center font-black text-slate-400 gap-2"><Lock size={18} /> 현재 가입 기간이 아닙니다</div>}
-                         <div className="flex justify-between items-start mb-2">
-                           <div><span className="font-black text-xl block">{p.name}</span><span className="text-xs font-bold text-slate-400">{p.period} 거치</span></div>
-                           <span className="bg-indigo-600 text-white px-4 py-1.5 rounded-xl text-xs font-black shadow-lg shadow-indigo-100">이자율 {p.rate}</span>
-                         </div>
-                         <p className="text-sm text-slate-500 font-medium leading-relaxed">{p.desc}</p>
-                       </button>
-                     ))}
-                   </div>
-                 </div>
-                 <div className="space-y-4">
-                    <input type="text" value={savingsForm.name} onChange={(e)=>setSavingsForm({...savingsForm, name: e.target.value})} className="w-full p-5 bg-slate-50 rounded-2xl font-black outline-none border-2 border-transparent focus:border-indigo-500 focus:bg-white transition-all" placeholder="예금 통장 이름을 지어주세요" />
-                    <input type="number" value={savingsForm.amount} onChange={(e)=>setSavingsForm({...savingsForm, amount: e.target.value})} className="w-full p-5 bg-slate-50 rounded-2xl font-black outline-none border-2 border-transparent focus:border-indigo-500 focus:bg-white transition-all" placeholder="입금할 금액 (G)" />
-                 </div>
-                 <button onClick={joinSavings} className="w-full py-6 bg-indigo-600 text-white font-black rounded-[1.5rem] shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all text-lg">가입 신청 완료</button>
-               </div>
-            </div>
-            
-            <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100">
-              <h3 className="font-black text-xl mb-8 flex items-center gap-2"><University size={24} className="text-slate-400" /> 가입된 예금 목록</h3>
-              <div className="space-y-4">
-                {mySavings.length === 0 ? (
-                  <div className="text-center py-28 text-slate-300 font-black">가입한 예금 상품이 없습니다.</div>
-                ) : mySavings.map(s => (
-                  <div key={s.id} className="p-6 bg-slate-50 rounded-3xl border border-slate-100 flex justify-between items-center group hover:bg-white hover:shadow-lg transition-all">
-                    <div>
-                      <div className="font-black text-indigo-600 text-lg mb-1">{s.accountName}</div>
-                      <div className="text-xs text-slate-400 font-bold">{s.name} ({s.rate}) · {s.startDate} 가입</div>
+            <div className="lg:col-span-2 space-y-8">
+              {/* Balance Card */}
+              <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100 relative overflow-hidden">
+                <div className="relative z-10">
+                  <p className="text-slate-400 font-bold mb-2">현재 보유 잔액</p>
+                  <h2 className="text-6xl font-black tracking-tighter mb-8">{user.balance.toLocaleString()} <span className="text-2xl text-slate-300 font-medium">G</span></h2>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-slate-50 p-6 rounded-3xl">
+                      <p className="text-xs font-bold text-slate-400 mb-1">보유 현금</p>
+                      <p className="text-xl font-black">{user.balance.toLocaleString()}G</p>
                     </div>
-                    <div className="text-right font-black">
-                      <div className="text-2xl text-slate-800">{s.amount.toLocaleString()} <span className="text-sm">G</span></div>
-                      <div className="text-[10px] text-green-500 uppercase tracking-tighter">운용 중</div>
+                    <div className="bg-indigo-50 p-6 rounded-3xl">
+                      <p className="text-xs font-bold text-indigo-400 mb-1">예치 예금</p>
+                      <p className="text-xl font-black text-indigo-600">{(user.subscriptions?.reduce((a, b) => a + b.amount, 0) || 0).toLocaleString()}G</p>
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'fine' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-            {isAdmin ? (
-              <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100">
-                <h3 className="text-2xl font-black mb-10 text-rose-600 flex items-center gap-3"><ShieldAlert size={28} /> 벌금 고지서 발행</h3>
-                <div className="space-y-8">
-                  <div>
-                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest px-1 mb-3 block">대상 학생 ({selectedStudents.length}명 선택됨)</label>
-                    <div className="grid grid-cols-4 sm:grid-cols-5 gap-2 max-h-56 overflow-y-auto p-4 bg-slate-50 rounded-3xl border border-slate-100">
-                      {Object.values(students).sort((a,b)=>parseInt(a.num)-parseInt(b.num)).map(s => (
-                        <button key={s.uid} onClick={() => setSelectedStudents(prev => prev.includes(s.uid) ? prev.filter(id => id !== s.uid) : [...prev, s.uid])} className={`py-3 rounded-xl text-xs font-black border-2 transition-all ${selectedStudents.includes(s.uid) ? 'bg-rose-500 border-rose-500 text-white shadow-lg' : 'bg-white border-white text-slate-500 hover:border-rose-200'}`}>{s.name}</button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <input type="number" value={fineForm.amount} onChange={(e) => setFineForm({...fineForm, amount: e.target.value})} className="p-5 bg-slate-50 rounded-2xl font-black outline-none border-2 border-transparent focus:border-rose-500 focus:bg-white transition-all" placeholder="벌금액 (G)" />
-                    <input type="text" value={fineForm.reason} onChange={(e) => setFineForm({...fineForm, reason: e.target.value})} className="p-5 bg-slate-50 rounded-2xl font-black outline-none border-2 border-transparent focus:border-rose-500 focus:bg-white transition-all" placeholder="사유 (예: 지각)" />
-                  </div>
-                  <button onClick={submitFine} className="w-full py-6 bg-rose-600 text-white font-black rounded-[1.5rem] shadow-xl shadow-rose-100 hover:bg-rose-700 transition-all">벌금 부과 확정</button>
                 </div>
+                <div className="absolute top-1/2 right-[-20px] translate-y-[-50%] text-slate-50 opacity-10"><Banknote size={240}/></div>
               </div>
-            ) : (
-              <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100">
-                <h3 className="text-2xl font-black mb-10 text-rose-600">내 벌금 내역</h3>
-                <div className="space-y-4">
-                  {fines.filter(f => f.studentId === currentUserData.uid).map((f, i) => (
-                    <div key={i} className="p-6 bg-rose-50 rounded-3xl border border-rose-100 flex justify-between items-center">
-                      <div><div className="font-black text-rose-700 text-lg">{f.reason}</div><div className="text-xs text-rose-400 font-bold mt-1">{f.date}</div></div>
-                      <div className="font-black text-2xl text-rose-600">-{f.amount.toLocaleString()} <span className="text-sm">G</span></div>
-                    </div>
-                  ))}
-                  {fines.filter(f => f.studentId === currentUserData.uid).length === 0 && <div className="text-center py-28 text-slate-300 font-black">부과된 벌금이 없습니다. 훌륭합니다!</div>}
-                </div>
-              </div>
-            )}
-            <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100">
-              <h3 className="font-black text-xl mb-8">전체 징수 현황</h3>
-              <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
-                {fines.map((f, i) => (
-                  <div key={i} className="p-5 bg-slate-50 rounded-2xl border border-slate-100 flex justify-between items-center group">
-                    <div><div className="font-black text-slate-800">{f.studentName}</div><div className="text-xs text-slate-400 font-bold">{f.reason} · {f.date}</div></div>
-                    <div className="text-rose-500 font-black text-lg">-{f.amount.toLocaleString()}G</div>
-                  </div>
-                ))}
-                {fines.length === 0 && <div className="text-center py-10 text-slate-300 font-black">징수된 벌금이 없습니다.</div>}
-              </div>
-            </div>
-          </div>
-        )}
 
-        {activeTab === 'issue' && isAdmin && (
-          <div className="max-w-4xl mx-auto bg-white rounded-[3rem] p-12 shadow-sm border border-slate-100">
-            <h3 className="text-3xl font-black mb-12 text-indigo-600 flex items-center gap-4"><Banknote size={40} /> 화폐 발행 및 월급 지급</h3>
-            <div className="space-y-10">
-               <div className="space-y-4">
-                 <label className="text-xs font-black text-slate-400 uppercase tracking-widest px-1 block">지급 대상 학생</label>
-                 <div className="flex flex-wrap gap-2.5 p-6 bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-200">
-                    {Object.values(students).sort((a,b)=>parseInt(a.num)-parseInt(b.num)).map(s => (
-                       <button key={s.uid} onClick={() => setSelectedStudents(prev => prev.includes(s.uid) ? prev.filter(id => id !== s.uid) : [...prev, s.uid])} className={`px-5 py-2.5 rounded-xl text-sm font-black border transition-all ${selectedStudents.includes(s.uid) ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-white border-slate-200 text-slate-400 hover:border-indigo-300'}`}>{s.name}</button>
-                    ))}
-                 </div>
-               </div>
-               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  <div className="space-y-3">
-                    <label className="text-xs font-black text-slate-400 px-1">지급 금액</label>
-                    <input type="number" value={issueForm.amount} onChange={(e) => setIssueForm({...issueForm, amount: e.target.value})} className="w-full p-6 bg-slate-50 rounded-3xl font-black text-3xl outline-none focus:bg-white focus:ring-4 focus:ring-indigo-50 transition-all" placeholder="0 G" />
-                  </div>
-                  <div className="space-y-3">
-                    <label className="text-xs font-black text-slate-400 px-1">지급 사유</label>
-                    <input type="text" value={issueForm.reason} onChange={(e) => setIssueForm({...issueForm, reason: e.target.value})} className="w-full p-6 bg-slate-50 rounded-3xl font-black text-xl outline-none focus:bg-white focus:ring-4 focus:ring-indigo-50 transition-all" placeholder="예: 월급 지급" />
-                  </div>
-               </div>
-               <button onClick={handleIssueCurrency} className="w-full py-8 bg-indigo-600 text-white font-black text-2xl rounded-[2rem] shadow-2xl shadow-indigo-100 hover:bg-indigo-700 hover:scale-[1.01] transition-all active:scale-95">화폐 발행 및 지급 승인</button>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'settings' && (
-          <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-10">
-            <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100">
-              <h3 className="text-2xl font-black mb-8 flex items-center gap-3"><UserCircle size={28} className="text-indigo-500" /> 내 계정 정보</h3>
-              <div className="space-y-6">
-                 <div className="bg-slate-50 p-8 rounded-[2rem] space-y-6 border border-slate-100">
-                    <div className="flex justify-between items-center"><span className="font-bold text-slate-400">사용자 이름</span><span className="font-black text-lg">{myData.name}</span></div>
-                    <div className="flex justify-between items-center"><span className="font-bold text-slate-400">아이디</span><span className="font-black text-lg">{myData.id}</span></div>
-                    <div className="flex justify-between items-center pt-4 border-t border-slate-200">
-                      <span className="font-bold text-slate-400">비밀번호 확인</span>
-                      {!isPwVerified ? (
-                        <div className="flex gap-2">
-                          <input type="password" id="checkPwInput" className="w-24 p-2 bg-white border rounded-xl text-center font-bold outline-none focus:border-indigo-500" placeholder="PIN" />
-                          <button onClick={() => { 
-                            const val = document.getElementById('checkPwInput').value;
-                            if(val === myData.pw) setIsPwVerified(true); else alert("비밀번호가 틀립니다."); 
-                          }} className="bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-black">확인</button>
+              {/* Admin Student List */}
+              {user.role === 'admin' && (
+                <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100">
+                  <h3 className="text-xl font-black mb-6 flex items-center gap-2"><TrendingUp size={24} className="text-indigo-600"/> 학생 명부 및 관리</h3>
+                  <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+                    {students.filter(s => s.role !== 'admin').map(s => (
+                      <div key={s.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl hover:bg-slate-100 transition-all">
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center font-bold text-slate-400 text-sm shadow-sm">{s.id.slice(-2)}</div>
+                          <div>
+                            <p className="font-bold">{s.name}</p>
+                            <p className="text-xs text-slate-400 font-medium">{s.balance.toLocaleString()} G</p>
+                          </div>
                         </div>
-                      ) : <span className="text-indigo-600 font-black text-lg tracking-widest">{myData.pw}</span>}
-                    </div>
-                 </div>
-              </div>
-            </div>
-            
-            {isAdmin && (
-              <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100">
-                <h3 className="text-2xl font-black mb-8 flex items-center gap-3"><Users size={28} className="text-slate-400" /> 학생 명부 관리</h3>
-                <div className="relative mb-6">
-                  <input type="text" placeholder="이름으로 학생 찾기..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full p-5 bg-slate-50 rounded-2xl font-black outline-none border-2 border-transparent focus:border-indigo-500 focus:bg-white transition-all pl-12" />
-                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 font-black">검색</div>
+                        <div className="flex gap-2">
+                          <button onClick={() => {const a = prompt(`${s.name}님께 발행할 금액`); if(a) handleIssuance(s.id, a)}} className="p-2 bg-white text-indigo-600 rounded-xl shadow-sm hover:bg-indigo-600 hover:text-white transition-all"><PlusCircle size={20}/></button>
+                          <button onClick={() => {const a = prompt(`${s.name}님께 부과할 벌금`); if(a) handleIssuance(s.id, a, true)}} className="p-2 bg-white text-red-500 rounded-xl shadow-sm hover:bg-red-500 hover:text-white transition-all"><MinusCircle size={20}/></button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div className="space-y-3 max-h-[450px] overflow-y-auto pr-2 custom-scrollbar">
-                  {Object.values(students).filter(s => s.name.includes(searchQuery)).sort((a,b)=>parseInt(a.num)-parseInt(b.num)).map(s => (
-                    <div key={s.uid} className="p-4 bg-slate-50 rounded-2xl flex justify-between items-center border border-slate-100 group hover:bg-white hover:shadow-md transition-all">
-                       <div className="flex items-center gap-4">
-                         <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center font-black text-slate-500 text-xs">{s.num}</div>
-                         <div>
-                           <div className="font-black text-slate-800">{s.name}</div>
-                           <div className="text-[10px] text-slate-400 font-bold uppercase">ID: {s.id} · PIN: {s.pw}</div>
-                         </div>
-                       </div>
-                       <button onClick={async () => {
-                         const sRef = doc(db, 'artifacts', appId, 'public', 'data', 'students', s.uid);
-                         await updateDoc(sRef, { pw: `67${s.num}` });
-                         alert(`${s.name}의 비밀번호를 67${s.num}으로 초기화했습니다.`);
-                       }} className="p-2.5 text-orange-500 bg-white rounded-xl shadow-sm hover:bg-orange-50 transition-colors"><RefreshCcw size={16} /></button>
+              )}
+
+              {/* Recent Activity */}
+              <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100">
+                <h3 className="text-xl font-black mb-6">최근 활동 내역</h3>
+                <div className="space-y-4">
+                  {history.filter(h => user.role === 'admin' || h.targetId === user.id).slice(0, 5).map(h => (
+                    <div key={h.id} className={`flex items-center justify-between p-4 rounded-2xl ${h.status === 'cancelled' ? 'opacity-30 line-through' : 'bg-slate-50'}`}>
+                      <div className="flex items-center gap-4">
+                        <div className={`p-2 rounded-xl ${h.type === 'issue' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                          {h.type === 'issue' ? <PlusCircle size={20}/> : <MinusCircle size={20}/>}
+                        </div>
+                        <div>
+                          <p className="font-bold text-sm">{h.type === 'issue' ? '기타 지급' : '벌금 부과'}: {h.targetName}</p>
+                          <p className="text-[10px] text-slate-400 font-medium">{h.date}</p>
+                        </div>
+                      </div>
+                      <p className={`font-black ${h.type === 'issue' ? 'text-green-500' : 'text-red-500'}`}>
+                        {h.type === 'issue' ? '+' : '-'}{h.amount.toLocaleString()} G
+                      </p>
                     </div>
                   ))}
+                  {history.length === 0 && <p className="text-center py-10 text-slate-300 font-medium">활동 내역이 없습니다.</p>}
                 </div>
               </div>
-            )}
+            </div>
+
+            {/* Sidebar Stats */}
+            <div className="space-y-8">
+              <div className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-slate-100">
+                <h3 className="font-black flex items-center gap-2 mb-6"><RefreshCw size={20} className="text-indigo-600"/> 경제 리포트</h3>
+                <div className="space-y-4">
+                  <div className="p-5 bg-indigo-50/50 rounded-2xl flex items-center justify-between">
+                    <span className="text-xs font-bold text-indigo-400 uppercase tracking-wider">교실 총 통화량</span>
+                    <span className="font-black text-indigo-600">{students.reduce((a, b) => a + b.balance, 0).toLocaleString()}G</span>
+                  </div>
+                  <div className="p-5 bg-red-50 rounded-2xl flex items-center justify-between">
+                    <span className="text-xs font-bold text-red-400 uppercase tracking-wider">누적 벌금액</span>
+                    <span className="font-black text-red-500">{history.filter(h => h.type === 'penalty' && h.status === 'active').reduce((a, b) => a + b.amount, 0).toLocaleString()}G</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* History Management View (Admin Only) */}
+        {view === 'history' && user.role === 'admin' && (
+          <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100">
+            <h3 className="text-2xl font-black mb-8 flex items-center gap-2 text-slate-800"><History size={28} className="text-indigo-600"/> 화폐 발행 내역 관리</h3>
+            <div className="space-y-4">
+              {history.map(h => (
+                <div key={h.id} className={`flex flex-col md:flex-row md:items-center justify-between p-6 rounded-[2rem] border ${h.status === 'cancelled' ? 'bg-slate-50 border-slate-100 opacity-50' : 'bg-white border-slate-100'}`}>
+                  <div className="flex items-center gap-6">
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${h.type === 'issue' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                      {h.type === 'issue' ? <PlusCircle/> : <MinusCircle/>}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-black text-lg">{h.targetName}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded font-bold ${h.type === 'issue' ? 'bg-green-50 text-green-500' : 'bg-red-50 text-red-500'}`}>{h.type === 'issue' ? '발행' : '벌금'}</span>
+                      </div>
+                      <p className="text-xs text-slate-400 font-medium">{h.date}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-6 mt-4 md:mt-0">
+                    <p className={`text-xl font-black ${h.type === 'issue' ? 'text-green-600' : 'text-red-600'}`}>{h.type === 'issue' ? '+' : '-'}{h.amount.toLocaleString()} G</p>
+                    {h.status === 'active' && (
+                      <div className="flex gap-2">
+                        <button onClick={() => handleCancel(h.id)} className="bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-black transition-all">전체취소</button>
+                        <button onClick={() => handleCancel(h.id, true)} className="bg-slate-100 text-slate-600 px-4 py-2 rounded-xl text-xs font-bold hover:bg-slate-200 transition-all">부분취소</button>
+                      </div>
+                    )}
+                    {h.status === 'cancelled' && <span className="text-red-500 font-black text-sm uppercase">Cancelled</span>}
+                  </div>
+                </div>
+              ))}
+              {history.length === 0 && <div className="text-center py-20 text-slate-300 font-bold italic">내역이 존재하지 않습니다.</div>}
+            </div>
+          </div>
+        )}
+
+        {/* Savings View */}
+        {view === 'savings' && (
+          <div className="space-y-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {/* Join List */}
+              <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100">
+                <h3 className="text-xl font-black mb-6">신규 예금 가입</h3>
+                <div className="space-y-4">
+                  {savingsProducts.map(p => (
+                    <div key={p.id} className="p-6 bg-slate-50 rounded-3xl border border-slate-100 hover:border-indigo-200 transition-all group">
+                      <div className="flex justify-between items-start mb-4">
+                        <div>
+                          <h4 className="font-black text-lg">{p.name}</h4>
+                          <p className="text-xs text-slate-400 font-bold">약정 이율 {p.rate}% / {p.period}일</p>
+                        </div>
+                        <div className="bg-indigo-600 text-white p-2 rounded-xl opacity-0 group-hover:opacity-100 transition-all"><ChevronRight size={18}/></div>
+                      </div>
+                      <button 
+                        onClick={() => {const a = prompt(`${p.name} 가입 금액`); if(a) joinSavings(p, a)}}
+                        className="w-full bg-white text-indigo-600 py-3 rounded-2xl font-bold shadow-sm hover:bg-indigo-600 hover:text-white transition-all"
+                      >
+                        가입 신청하기
+                      </button>
+                    </div>
+                  ))}
+                  {user.role === 'admin' && (
+                    <button 
+                      onClick={() => {
+                        const name = prompt('상품명');
+                        const rate = prompt('이율');
+                        const period = prompt('기간');
+                        if(name && rate && period) setSavingsProducts([...savingsProducts, {id: Date.now(), name, rate: parseInt(rate), period: parseInt(period), isOpen: true}]);
+                      }}
+                      className="w-full py-4 border-2 border-dashed border-slate-200 rounded-[2rem] text-slate-300 font-bold hover:border-indigo-300 hover:text-indigo-400 transition-all flex items-center justify-center gap-2"
+                    >
+                      <PlusCircle size={20}/> 상품 추가 (관리자 전용)
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* My Subscriptions */}
+              <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100">
+                <h3 className="text-xl font-black mb-6">나의 예금 현황</h3>
+                <div className="space-y-4">
+                  {user.subscriptions?.map(s => (
+                    <div key={s.id} className="p-6 bg-indigo-50 rounded-3xl border border-indigo-100">
+                      <div className="flex justify-between items-start mb-4">
+                        <p className="font-black text-indigo-900">{s.productName}</p>
+                        <button onClick={() => cancelSavings(s.id)} className="text-red-400 hover:text-red-600 transition-all"><XCircle size={20}/></button>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div className="bg-white/50 p-2 rounded-xl">
+                          <p className="text-[10px] font-bold text-slate-400">원금</p>
+                          <p className="text-xs font-black">{s.amount.toLocaleString()}</p>
+                        </div>
+                        <div className="bg-white/50 p-2 rounded-xl">
+                          <p className="text-[10px] font-bold text-slate-400">이자</p>
+                          <p className="text-xs font-black text-green-500">+{s.interest.toLocaleString()}</p>
+                        </div>
+                        <div className="bg-white/50 p-2 rounded-xl">
+                          <p className="text-[10px] font-bold text-slate-400">합계</p>
+                          <p className="text-xs font-black text-indigo-600">{(s.amount + s.interest).toLocaleString()}</p>
+                        </div>
+                      </div>
+                      <button onClick={() => cancelSavings(s.id, false)} className="w-full mt-4 bg-indigo-600 text-white py-2.5 rounded-xl font-bold text-xs hover:bg-indigo-700">만기 해지 (원금+이자)</button>
+                    </div>
+                  ))}
+                  {(!user.subscriptions || user.subscriptions.length === 0) && <p className="text-center py-10 text-slate-300 font-bold">가입된 예금이 없습니다.</p>}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Settings View */}
+        {view === 'settings' && (
+          <div className="max-w-md mx-auto bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100">
+            <div className="flex flex-col items-center mb-10">
+              <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 mb-4 border-4 border-white shadow-md relative">
+                <User size={48}/>
+                <div className="absolute bottom-0 right-0 w-8 h-8 bg-green-500 border-4 border-white rounded-full"></div>
+              </div>
+              <h3 className="text-2xl font-black text-slate-800">{user.name}</h3>
+              <p className="text-slate-400 font-bold">{user.role === 'admin' ? 'System Administrator' : 'Class Member'}</p>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="p-5 bg-slate-50 rounded-[2rem] flex items-center gap-4">
+                <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-slate-400 shadow-sm"><User size={18}/></div>
+                <div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Login ID</p>
+                  <p className="font-black text-slate-700">{user.id}</p>
+                </div>
+              </div>
+              
+              <div className="p-5 bg-slate-50 rounded-[2rem] flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-slate-400 shadow-sm"><Lock size={18}/></div>
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Password</p>
+                    <p className="font-black text-slate-700">{isPwVisible ? user.password : '••••••'}</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => {
+                    if (isPwVisible) return setIsPwVisible(false);
+                    const p = prompt('현재 비밀번호를 입력하세요.');
+                    if (p === user.password) setIsPwVisible(true);
+                    else if (p !== null) showToast('비밀번호가 틀렸습니다.', 'error');
+                  }}
+                  className="p-2 text-indigo-600 hover:bg-white rounded-lg transition-all"
+                >
+                  {isPwVisible ? <EyeOff size={20}/> : <Eye size={20}/>}
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-10 pt-6 border-t border-slate-50 flex justify-center">
+              <div className="flex items-center gap-2 text-slate-300 font-bold text-xs bg-slate-50 px-4 py-2 rounded-full">
+                <ShieldCheck size={14}/> 보안 인증됨
+              </div>
+            </div>
           </div>
         )}
       </main>
+
+      {/* Session Timer Sticky Bar */}
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-4">
+        <div className="bg-white/80 backdrop-blur-md px-6 py-4 rounded-[2rem] shadow-2xl border border-white flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Clock size={18} className={sessionTime < 60 ? 'text-red-500 animate-pulse' : 'text-slate-400'}/>
+            <span className={`font-black tracking-tighter text-lg ${sessionTime < 60 ? 'text-red-500' : 'text-slate-700'}`}>
+              {Math.floor(sessionTime / 60)}:{(sessionTime % 60).toString().padStart(2, '0')}
+            </span>
+          </div>
+          <button onClick={() => {setSessionTime(600); showToast('시간이 연장되었습니다.', 'success')}} className="bg-slate-100 hover:bg-slate-200 p-2 rounded-xl transition-all text-slate-500"><RefreshCw size={16}/></button>
+          <div className="w-[1px] h-4 bg-slate-200 mx-1"></div>
+          <button onClick={() => setShowLogoutConfirm(true)} className="flex items-center gap-2 text-red-500 font-black text-sm hover:opacity-70">
+            <LogOut size={16}/> EXIT
+          </button>
+        </div>
+      </div>
+
+      {/* Logout Modal */}
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
+          <div className="bg-white rounded-[2.5rem] p-10 max-w-sm w-full text-center shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div className="w-20 h-20 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6"><LogOut size={40}/></div>
+            <h3 className="text-2xl font-black mb-2 text-slate-800">로그아웃 하시겠습니까?</h3>
+            <p className="text-slate-400 font-bold text-sm mb-8">저장하지 않은 데이터는 사라질 수 있습니다.</p>
+            <div className="flex gap-4">
+              <button onClick={() => setShowLogoutConfirm(false)} className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-black hover:bg-slate-200 transition-all">취소</button>
+              <button onClick={() => handleLogout()} className="flex-1 py-4 bg-red-500 text-white rounded-2xl font-black shadow-lg shadow-red-100 hover:bg-red-600 transition-all">나가기</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toast && (
+        <div className={`fixed top-24 left-1/2 -translate-x-1/2 z-[100] px-8 py-4 rounded-full text-white font-black shadow-2xl animate-in slide-in-from-top-10 duration-300 ${toast.type === 'error' ? 'bg-red-500' : 'bg-slate-900'}`}>
+          {toast.text}
+        </div>
+      )}
     </div>
   );
-}
+};
+
+export default App;
