@@ -11,9 +11,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;800&display=swap');
-        body { font-family: 'Pretendard', sans-serif; background-color: #f3f4f9; margin: 0; transition: background-color 0.3s; }
-        .glass-card { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.3); }
-        .custom-shadow { box-shadow: 0 20px 50px -12px rgba(0, 0, 0, 0.08); }
+        body { font-family: 'Pretendard', sans-serif; background-color: #f3f4f9; margin: 0; }
         .animate-fade { animation: fadeIn 0.3s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .no-scrollbar::-webkit-scrollbar { display: none; }
@@ -26,19 +24,24 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, updateDoc, arrayUnion, query, orderBy, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, query, limit, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
+        // Firebase Config
         const firebaseConfig = JSON.parse(__firebase_config);
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'economy-system-v1';
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'economy-system-prod';
 
-        window.FB_UTILS = { auth, db, appId, doc, setDoc, getDoc, onSnapshot, collection, updateDoc, arrayUnion, query, orderBy, deleteDoc, signInAnonymously, signInWithCustomToken, onAuthStateChanged };
+        // 전역 유틸리티 등록
+        window.FB_UTILS = { 
+            auth, db, appId, doc, setDoc, getDoc, onSnapshot, collection, 
+            signInAnonymously, signInWithCustomToken, onAuthStateChanged, deleteDoc 
+        };
     </script>
 
     <script type="text/babel">
-        const { useState, useEffect, useMemo, useRef } = React;
+        const { useState, useEffect, useRef } = React;
 
         const INITIAL_STUDENTS = [
             { id: '6701', name: '강유주' }, { id: '6702', name: '고윤서' }, { id: '6703', name: '공윤호' },
@@ -52,14 +55,12 @@
         ];
 
         const THEMES = {
-            purple: { main: 'bg-indigo-600', text: 'text-indigo-600', border: 'border-indigo-600', light: 'bg-indigo-50', gradient: 'from-purple-600 to-fuchsia-500' },
-            blue: { main: 'bg-blue-600', text: 'text-blue-600', border: 'border-blue-600', light: 'bg-blue-50', gradient: 'from-blue-600 to-cyan-500' },
-            rose: { main: 'bg-rose-500', text: 'text-rose-500', border: 'border-rose-500', light: 'bg-rose-50', gradient: 'from-rose-500 to-orange-400' },
-            emerald: { main: 'bg-emerald-500', text: 'text-emerald-500', border: 'border-emerald-500', light: 'bg-emerald-50', gradient: 'from-emerald-500 to-teal-400' },
-            dark: { main: 'bg-slate-800', text: 'text-slate-800', border: 'border-slate-800', light: 'bg-slate-100', gradient: 'from-slate-800 to-slate-600' }
+            purple: { main: 'bg-indigo-600', text: 'text-indigo-600', light: 'bg-indigo-50', gradient: 'from-indigo-600 to-purple-500' },
+            blue: { main: 'bg-blue-600', text: 'text-blue-600', light: 'bg-blue-50', gradient: 'from-blue-600 to-cyan-500' },
+            rose: { main: 'bg-rose-500', text: 'text-rose-500', light: 'bg-rose-50', gradient: 'from-rose-500 to-orange-400' },
+            emerald: { main: 'bg-emerald-500', text: 'text-emerald-500', light: 'bg-emerald-50', gradient: 'from-emerald-500 to-teal-400' },
+            dark: { main: 'bg-slate-800', text: 'text-slate-800', light: 'bg-slate-100', gradient: 'from-slate-800 to-slate-600' }
         };
-
-        const EMOJIS = ['👤', '🦁', '🐱', '🦊', '🐻', '🐼', '🐨', '🐯', '🐸', '🦄', '🐲', '⭐', '💎', '🔥', '🌈'];
 
         const App = () => {
             const [fb, setFb] = useState(null);
@@ -70,96 +71,86 @@
             const [view, setView] = useState('login');
             const [history, setHistory] = useState([]);
             const [products, setProducts] = useState([]);
-            const [selectedIds, setSelectedIds] = useState([]);
             const [toast, setToast] = useState(null);
-            const [activeBanner, setActiveBanner] = useState(0);
+            const [selectedIds, setSelectedIds] = useState([]);
 
-            // Firebase 초기화
+            // 1. Firebase Bridge
             useEffect(() => {
-                const interval = setInterval(() => {
+                const checkFB = setInterval(() => {
                     if (window.FB_UTILS) {
                         setFb(window.FB_UTILS);
-                        clearInterval(interval);
+                        clearInterval(checkFB);
                     }
                 }, 100);
-                return () => clearInterval(interval);
+                return () => clearInterval(checkFB);
             }, []);
 
-            // 인증 처리
+            // 2. Auth Sequence (RULE 3)
             useEffect(() => {
                 if (!fb) return;
-                const initAuth = async () => {
+                const runAuth = async () => {
                     try {
                         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                             await fb.signInWithCustomToken(fb.auth, __initial_auth_token);
                         } else {
                             await fb.signInAnonymously(fb.auth);
                         }
-                    } catch (err) {
-                        console.error("Auth Error:", err);
+                    } catch (e) {
+                        console.error("Auth Failure", e);
+                        setIsLoading(false); // 에러나도 로딩은 끔 (오프라인 모드 대비)
                     }
                 };
-                initAuth();
+                runAuth();
                 const unsub = fb.onAuthStateChanged(fb.auth, setFbUser);
                 return () => unsub();
             }, [fb]);
 
-            // 데이터 리스너
+            // 3. Data Sync (RULE 1 & 2)
             useEffect(() => {
                 if (!fb || !fbUser) return;
 
                 const { db, appId, collection, onSnapshot, doc, setDoc } = fb;
 
-                // 학생 정보 리스너
-                const studentsRef = collection(db, 'artifacts', appId, 'public', 'data', 'students');
-                const unsubStudents = onSnapshot(studentsRef, async (snapshot) => {
-                    let list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-                    
-                    if (list.length === 0) {
+                // Sync Students & Initialize
+                const unsubStudents = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'students'), async (snap) => {
+                    if (snap.empty) {
                         // 초기 데이터 생성
-                        const promises = INITIAL_STUDENTS.map(s => {
-                            return setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'students', s.id), {
+                        const batch = INITIAL_STUDENTS.map(s => 
+                            setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'students', s.id), {
                                 ...s, password: s.id, balance: 1000, profileEmoji: '👤', theme: 'purple', subscriptions: [], role: 'student'
-                            });
-                        });
-                        promises.push(setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'students', 'admin'), {
+                            })
+                        );
+                        batch.push(setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'students', 'admin'), {
                             id: 'admin', name: '관리자', password: '0000', balance: 0, profileEmoji: '👑', theme: 'dark', role: 'admin'
                         }));
-                        await Promise.all(promises);
+                        await Promise.all(batch);
                     } else {
-                        setStudents(list);
+                        setStudents(snap.docs.map(d => ({ id: d.id, ...d.data() })));
                         setIsLoading(false);
                     }
+                }, (err) => {
+                    console.error("Student Sync Error", err);
+                    setIsLoading(false);
                 });
 
-                // 기록 리스너
-                const historyRef = collection(db, 'artifacts', appId, 'public', 'data', 'history');
-                const unsubHistory = onSnapshot(historyRef, (snapshot) => {
-                    const hList = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-                    setHistory(hList.sort((a, b) => b.timestamp - a.timestamp));
+                // Sync History
+                const unsubHistory = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'history'), (snap) => {
+                    setHistory(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => b.timestamp - a.timestamp));
                 });
 
-                // 상품 리스너
-                const productsRef = collection(db, 'artifacts', appId, 'public', 'data', 'products');
-                const unsubProducts = onSnapshot(productsRef, async (snapshot) => {
-                    const pList = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-                    if (pList.length === 0) {
-                        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'products', 'default-1'), {
-                            name: '당일 성장 예금(24시간)', rate: 3.5, active: true, desc: '기본 하루 예금'
-                        });
-                    } else {
-                        setProducts(pList);
-                    }
+                // Sync Products
+                const unsubProducts = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'products'), (snap) => {
+                    setProducts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
                 });
 
                 return () => { unsubStudents(); unsubHistory(); unsubProducts(); };
             }, [fb, fbUser]);
 
-            // 현재 로그인된 유저 데이터 실시간 업데이트
+            // 4. Update Current User
             useEffect(() => {
                 if (user && students.length > 0) {
-                    const updated = students.find(s => s.id === user.id);
-                    if (updated) setUser(updated);
+                    const u = students.find(s => s.id === user.id);
+                    if (u) setUser(u);
                 }
             }, [students]);
 
@@ -169,15 +160,13 @@
             };
 
             const handleLogin = (name, pw) => {
-                if (isLoading) return showToast('데이터를 불러오는 중입니다. 잠시만 기다려주세요.', 'error');
-                
                 const found = students.find(s => s.name === name && s.password === pw);
                 if (found) {
                     setUser(found);
                     setView('home');
-                    showToast(`${found.name}님 환영합니다.`);
+                    showToast(`${found.name}님 접속되었습니다.`);
                 } else {
-                    showToast('정보를 다시 확인해주세요.', 'error');
+                    showToast('성함 또는 비밀번호가 틀립니다.', 'error');
                 }
             };
 
@@ -188,10 +177,7 @@
 
             const handleAction = async (type, amount, reason) => {
                 const val = parseInt(amount);
-                if (isNaN(val) || val <= 0 || selectedIds.length === 0) return showToast('금액과 대상을 확인하세요.', 'error');
-
-                const groupId = Date.now().toString();
-                const targetStudents = students.filter(s => selectedIds.includes(s.id));
+                if (!val || val <= 0 || selectedIds.length === 0) return showToast('대상과 금액을 확인하세요.', 'error');
                 
                 const promises = selectedIds.map(id => {
                     const s = students.find(x => x.id === id);
@@ -199,44 +185,46 @@
                     return fb.setDoc(fb.doc(fb.db, 'artifacts', fb.appId, 'public', 'data', 'students', id), { balance: newBal }, { merge: true });
                 });
 
-                promises.push(fb.setDoc(fb.doc(fb.db, 'artifacts', fb.appId, 'public', 'data', 'history', groupId), {
+                promises.push(fb.setDoc(fb.doc(fb.db, 'artifacts', fb.appId, 'public', 'data', 'history', Date.now().toString()), {
                     targets: [...selectedIds],
-                    targetNames: targetStudents.map(s => s.name),
-                    summary: `${targetStudents[0].name}${targetStudents.length > 1 ? ` 외 ${targetStudents.length - 1}명` : ''}`,
+                    summary: `${students.find(x=>x.id===selectedIds[0]).name} 외 ${selectedIds.length-1}명`,
                     type, amount: val, reason: reason || '기타',
                     date: new Date().toLocaleString(),
-                    timestamp: Date.now(),
-                    status: 'active'
+                    timestamp: Date.now()
                 }));
 
                 await Promise.all(promises);
                 setSelectedIds([]);
-                showToast('처리가 완료되었습니다.');
+                showToast('거래가 정상 처리되었습니다.');
             };
 
             const currentTheme = THEMES[user?.theme || 'purple'];
 
+            if (isLoading) return (
+                <div className="min-h-screen flex items-center justify-center bg-slate-50">
+                    <div className="text-center animate-pulse">
+                        <div className="w-16 h-16 bg-indigo-600 rounded-2xl mx-auto mb-4 flex items-center justify-center text-white text-2xl">
+                            <i className="fas fa-landmark"></i>
+                        </div>
+                        <p className="font-black text-slate-400">금융 시스템 연결 중...</p>
+                    </div>
+                </div>
+            );
+
             if (view === 'login') return (
                 <div className="min-h-screen flex items-center justify-center bg-[#f0f2f5] p-4">
                     <div className="max-w-4xl w-full bg-white rounded-[2.5rem] shadow-2xl flex flex-col md:flex-row overflow-hidden border border-slate-200">
-                        <div className="md:w-5/12 bg-indigo-600 p-12 text-white flex flex-col justify-center relative">
-                            <h1 className="text-4xl font-black mb-4 z-10 leading-tight">또다른<br/>경제교실</h1>
-                            <p className="text-indigo-100 font-medium z-10">데이터 동기화 완료</p>
+                        <div className={`md:w-5/12 bg-indigo-600 p-12 text-white flex flex-col justify-center`}>
+                            <h1 className="text-4xl font-black mb-4 leading-tight">또다른<br/>경제교실</h1>
+                            <p className="text-indigo-100 font-medium">실시간 금융 관리 시스템</p>
                         </div>
-                        <div className="md:w-7/12 p-12 bg-white">
-                            <h2 className="text-2xl font-black text-slate-800 mb-8">로그인</h2>
-                            {isLoading ? (
-                                <div className="text-center py-10">
-                                    <i className="fas fa-circle-notch fa-spin text-3xl text-indigo-500 mb-4"></i>
-                                    <p className="font-bold text-slate-500">서버 데이터 연결 중...</p>
-                                </div>
-                            ) : (
-                                <div className="space-y-5">
-                                    <input id="uname" type="text" placeholder="성함 입력" className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-400 outline-none font-bold" />
-                                    <input id="upw" type="password" placeholder="비밀번호" className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-400 outline-none font-bold" />
-                                    <button onClick={() => handleLogin(document.getElementById('uname').value, document.getElementById('upw').value)} className="w-full bg-indigo-600 text-white py-5 rounded-2xl font-black text-lg shadow-xl hover:bg-indigo-700 transition-all mt-4">접속하기</button>
-                                </div>
-                            )}
+                        <div className="md:w-7/12 p-12">
+                            <h2 className="text-2xl font-black text-slate-800 mb-8 tracking-tighter">로그인</h2>
+                            <div className="space-y-4">
+                                <input id="u_name" type="text" placeholder="이름 입력" className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-400 outline-none font-bold" />
+                                <input id="u_pw" type="password" placeholder="비밀번호" className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-400 outline-none font-bold" />
+                                <button onClick={() => handleLogin(document.getElementById('u_name').value, document.getElementById('u_pw').value)} className="w-full bg-indigo-600 text-white py-5 rounded-2xl font-black text-lg shadow-xl hover:bg-indigo-700 transition-all mt-4">접속하기</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -247,24 +235,22 @@
                     <nav className="bg-white/80 backdrop-blur-md border-b border-slate-200 px-6 py-4 flex justify-between items-center sticky top-0 z-50">
                         <div className="flex items-center gap-2 cursor-pointer" onClick={() => setView('home')}>
                             <div className={`w-9 h-9 ${currentTheme.main} rounded-xl flex items-center justify-center text-white shadow-lg`}><i className="fas fa-landmark text-sm"></i></div>
-                            <span className="font-black text-lg tracking-tighter text-slate-800 uppercase">Economy</span>
+                            <span className="font-black text-lg tracking-tighter text-slate-800 uppercase">ECONOMY</span>
                         </div>
                         <div className="flex bg-slate-100 p-1 rounded-xl">
-                            <button onClick={() => setView('home')} className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${view === 'home' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>홈</button>
-                            <button onClick={() => setView('bank')} className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${view === 'bank' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>은행</button>
-                            {user.role === 'admin' && (
-                                <button onClick={() => setView('admin')} className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${view === 'admin' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>관리</button>
-                            )}
+                            <button onClick={() => setView('home')} className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${view === 'home' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-50'}`}>홈</button>
+                            <button onClick={() => setView('bank')} className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${view === 'bank' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-50'}`}>은행</button>
+                            {user.role === 'admin' && <button onClick={() => setView('admin')} className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${view === 'admin' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-50'}`}>관리</button>}
                         </div>
-                        <button onClick={() => { setView('login'); setUser(null); }} className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-400 hover:bg-rose-50 hover:text-rose-500 transition-all"><i className="fas fa-sign-out-alt"></i></button>
+                        <button onClick={() => { setView('login'); setUser(null); }} className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-400 hover:text-rose-500 transition-all"><i className="fas fa-sign-out-alt"></i></button>
                     </nav>
 
                     <main className="max-w-6xl mx-auto p-6 md:p-8 animate-fade">
                         {view === 'home' && (
                             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                                 <div className="lg:col-span-8 space-y-8">
-                                    <div className="bg-white rounded-[2.5rem] p-10 custom-shadow relative overflow-hidden group">
-                                        <p className="text-slate-400 font-bold text-sm mb-2">가용 자산</p>
+                                    <div className="bg-white rounded-[2.5rem] p-10 shadow-lg relative overflow-hidden">
+                                        <p className="text-slate-400 font-bold text-sm mb-2">총 자산</p>
                                         <div className="flex items-baseline gap-2 relative z-10">
                                             <span className={`text-7xl font-black tracking-tighter ${currentTheme.text}`}>{user.balance.toLocaleString()}</span>
                                             <span className="text-2xl font-black text-slate-300">G</span>
@@ -274,10 +260,10 @@
                                         </div>
                                     </div>
 
-                                    <div className="bg-white rounded-[2.5rem] p-8 custom-shadow">
-                                        <h3 className="text-lg font-black mb-6">최근 기록</h3>
+                                    <div className="bg-white rounded-[2.5rem] p-8 shadow-sm">
+                                        <h3 className="text-lg font-black mb-6">최근 거래 기록</h3>
                                         <div className="space-y-4">
-                                            {history.filter(h => user.role === 'admin' || h.targets.includes(user.id)).slice(0, 10).map(h => (
+                                            {history.filter(h => user.role === 'admin' || h.targets.includes(user.id)).slice(0, 8).map(h => (
                                                 <div key={h.id} className="p-5 bg-slate-50 rounded-2xl flex justify-between items-center">
                                                     <div className="flex items-center gap-4">
                                                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${h.type === 'issue' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
@@ -298,21 +284,18 @@
                                 </div>
 
                                 <div className="lg:col-span-4 space-y-8">
-                                    <div className="bg-white rounded-[2.5rem] p-8 custom-shadow text-center">
-                                        <div className="w-24 h-24 rounded-[2rem] bg-slate-50 mx-auto mb-4 flex items-center justify-center text-5xl border-4 border-white shadow-lg overflow-hidden">
-                                            {user.profileImg ? <img src={user.profileImg} className="w-full h-full object-cover" /> : user.profileEmoji}
+                                    <div className="bg-white rounded-[2.5rem] p-8 shadow-sm text-center">
+                                        <div className="w-24 h-24 rounded-[2rem] bg-slate-50 mx-auto mb-4 flex items-center justify-center text-5xl border-4 border-white shadow-md">
+                                            {user.profileEmoji}
                                         </div>
                                         <h4 className="font-black text-slate-800 text-lg">{user.name}</h4>
                                         <p className="text-[10px] font-black text-slate-400 mb-6 uppercase tracking-widest">{user.role}</p>
-                                        
-                                        <div className="border-t border-slate-100 pt-6 space-y-6 text-left">
-                                            <div>
-                                                <p className="text-[10px] font-black text-slate-400 mb-3 uppercase">Profile Icon</p>
-                                                <div className="grid grid-cols-5 gap-2">
-                                                    {EMOJIS.map(e => (
-                                                        <button key={e} onClick={() => updateUser({ profileEmoji: e, profileImg: null })} className={`text-xl p-2 rounded-xl hover:bg-slate-100 ${user.profileEmoji === e ? 'bg-indigo-50 ring-1 ring-indigo-200' : ''}`}>{e}</button>
-                                                    ))}
-                                                </div>
+                                        <div className="border-t border-slate-50 pt-6">
+                                            <p className="text-[10px] font-black text-slate-400 mb-3 uppercase">테마 변경</p>
+                                            <div className="flex gap-2">
+                                                {Object.keys(THEMES).map(t => (
+                                                    <button key={t} onClick={() => updateUser({ theme: t })} className={`flex-1 h-8 rounded-lg ${THEMES[t].main} ${user.theme === t ? 'ring-2 ring-offset-2 ring-indigo-300' : 'opacity-40'}`}></button>
+                                                ))}
                                             </div>
                                         </div>
                                     </div>
@@ -321,51 +304,50 @@
                         )}
 
                         {view === 'bank' && (
-                            <div className="space-y-8">
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                    {products.filter(p => p.active).map(p => (
-                                        <div key={p.id} className="bg-white p-8 rounded-[2.5rem] border-2 border-slate-100 flex flex-col justify-between">
-                                            <div>
-                                                <h4 className="text-xl font-black mb-2">{p.name}</h4>
-                                                <p className="text-xs text-slate-400 mb-6">{p.desc}</p>
-                                            </div>
-                                            <div className="flex justify-between items-end mb-6">
-                                                <span className="text-4xl font-black">{p.rate}%</span>
-                                            </div>
-                                            <button onClick={() => {
-                                                const amt = prompt('예치할 금액?');
-                                                const v = parseInt(amt);
-                                                if(!v || v <= 0 || user.balance < v) return showToast('금액을 확인하세요.', 'error');
-                                                const sub = { id: Date.now(), name: p.name, amount: v, interest: Math.floor(v * (p.rate/100)), date: new Date().toLocaleDateString() };
-                                                updateUser({ balance: user.balance - v, subscriptions: [...(user.subscriptions||[]), sub] });
-                                                showToast('가입 완료!');
-                                            }} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black">가입하기</button>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                {products.map(p => (
+                                    <div key={p.id} className="bg-white p-8 rounded-[2.5rem] border-2 border-slate-100 flex flex-col justify-between">
+                                        <div>
+                                            <h4 className="text-xl font-black mb-2">{p.name}</h4>
+                                            <p className="text-xs text-slate-400 mb-6">{p.desc}</p>
                                         </div>
-                                    ))}
-                                </div>
+                                        <div className="flex justify-between items-end mb-6">
+                                            <span className="text-4xl font-black">{p.rate}%</span>
+                                            <span className="text-[10px] font-bold text-slate-400 mb-1">수익률</span>
+                                        </div>
+                                        <button onClick={() => {
+                                            const amt = prompt('예치할 금액 입력');
+                                            const v = parseInt(amt);
+                                            if(!v || v <= 0 || user.balance < v) return showToast('잔액을 확인하세요.', 'error');
+                                            updateUser({ balance: user.balance - v, subscriptions: [...(user.subscriptions||[]), { id: Date.now(), name: p.name, amount: v, date: new Date().toLocaleDateString() }] });
+                                            showToast('예금 가입 완료!');
+                                        }} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black">가입하기</button>
+                                    </div>
+                                ))}
+                                {products.length === 0 && <div className="col-span-full py-20 text-center text-slate-400 font-bold">운영 중인 상품이 없습니다.</div>}
                             </div>
                         )}
 
                         {view === 'admin' && user.role === 'admin' && (
                             <div className="space-y-8">
-                                <div className="bg-white rounded-[2.5rem] p-10 custom-shadow">
-                                    <h3 className="text-2xl font-black mb-8 text-slate-800">학생 일괄 관리</h3>
-                                    <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-3 mb-8">
-                                        {students.filter(s => s.role !== 'admin').map(s => (
+                                <div className="bg-white rounded-[2.5rem] p-10 shadow-sm">
+                                    <h3 className="text-2xl font-black mb-8">학생 명단 관리</h3>
+                                    <div className="grid grid-cols-3 sm:grid-cols-6 lg:grid-cols-8 gap-3 mb-8 max-h-60 overflow-y-auto no-scrollbar">
+                                        {students.filter(s => s.role !== 'admin').sort((a,b)=>a.id.localeCompare(b.id)).map(s => (
                                             <button key={s.id} onClick={() => setSelectedIds(prev => prev.includes(s.id) ? prev.filter(i => i !== s.id) : [...prev, s.id])}
-                                                className={`p-3 rounded-2xl border-2 text-center transition-all ${selectedIds.includes(s.id) ? 'border-indigo-600 bg-indigo-50' : 'border-slate-50 bg-white'}`}>
+                                                className={`p-3 rounded-2xl border-2 transition-all ${selectedIds.includes(s.id) ? 'border-indigo-600 bg-indigo-50' : 'border-slate-50 bg-white'}`}>
                                                 <p className="text-xs font-black">{s.name}</p>
                                                 <p className="text-[8px] font-bold text-slate-400">{s.balance}G</p>
                                             </button>
                                         ))}
                                     </div>
-                                    <div className="flex gap-4">
-                                        <input id="amt" type="number" placeholder="금액" className="flex-1 px-6 py-4 bg-slate-50 rounded-2xl font-bold outline-none" />
-                                        <input id="reason" type="text" placeholder="사유" className="flex-1 px-6 py-4 bg-slate-50 rounded-2xl font-bold outline-none" />
+                                    <div className="grid grid-cols-2 gap-4 mb-4">
+                                        <input id="adm_amt" type="number" placeholder="금액" className="px-6 py-4 bg-slate-50 rounded-2xl font-bold outline-none" />
+                                        <input id="adm_reason" type="text" placeholder="지급/차감 사유" className="px-6 py-4 bg-slate-50 rounded-2xl font-bold outline-none" />
                                     </div>
-                                    <div className="flex gap-4 mt-4">
-                                        <button onClick={() => handleAction('issue', document.getElementById('amt').value, document.getElementById('reason').value)} className="flex-1 bg-emerald-500 text-white py-4 rounded-2xl font-black">지급</button>
-                                        <button onClick={() => handleAction('penalty', document.getElementById('amt').value, document.getElementById('reason').value)} className="flex-1 bg-rose-500 text-white py-4 rounded-2xl font-black">차감</button>
+                                    <div className="flex gap-4">
+                                        <button onClick={() => handleAction('issue', document.getElementById('adm_amt').value, document.getElementById('adm_reason').value)} className="flex-1 bg-emerald-500 text-white py-4 rounded-2xl font-black shadow-lg">일괄 지급</button>
+                                        <button onClick={() => handleAction('penalty', document.getElementById('adm_amt').value, document.getElementById('adm_reason').value)} className="flex-1 bg-rose-500 text-white py-4 rounded-2xl font-black shadow-lg">일괄 차감</button>
                                     </div>
                                 </div>
                             </div>
