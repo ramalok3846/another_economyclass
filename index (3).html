@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>또다른 경제교실 - 스마트 금융 시스템</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;800&display=swap');
+        body { font-family: 'Pretendard', sans-serif; background-color: #f3f4f9; margin: 0; transition: background-color 0.3s; }
+        .glass-card { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.3); }
+        .custom-shadow { box-shadow: 0 20px 50px -12px rgba(0, 0, 0, 0.08); }
+        .animate-fade { animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .banner-slide { transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        // 학생 초기 명단 (백한율 수정)
+        const INITIAL_STUDENTS = [
+            { id: '6701', name: '강유주' }, { id: '6702', name: '고윤서' }, { id: '6703', name: '공윤호' },
+            { id: '6704', name: '김성민' }, { id: '6705', name: '김태윤' }, { id: '6706', name: '나현웅' },
+            { id: '6707', name: '류찬혁' }, { id: '6708', name: '문예린' }, { id: '6709', name: '박소율' },
+            { id: '6710', name: '박채윤' }, { id: '6711', name: '배예람' }, { id: '6712', name: '백한율' },
+            { id: '6713', name: '우은서' }, { id: '6714', name: '우진서' }, { id: '6715', name: '윤소영' },
+            { id: '6716', name: '임소윤' }, { id: '6717', name: '임수현' }, { id: '6718', name: '정시후' },
+            { id: '6719', name: '조수빈' }, { id: '6720', name: '최리한' }, { id: '6721', name: '최은수' },
+            { id: '6722', name: '최준성' }, { id: '6723', name: '하예준' }, { id: '6724', name: '허단' }
+        ];
+
+        const THEMES = {
+            purple: { main: 'bg-indigo-600', text: 'text-indigo-600', border: 'border-indigo-600', light: 'bg-indigo-50', gradient: 'from-purple-600 to-fuchsia-500' },
+            blue: { main: 'bg-blue-600', text: 'text-blue-600', border: 'border-blue-600', light: 'bg-blue-50', gradient: 'from-blue-600 to-cyan-500' },
+            rose: { main: 'bg-rose-500', text: 'text-rose-500', border: 'border-rose-500', light: 'bg-rose-50', gradient: 'from-rose-500 to-orange-400' },
+            emerald: { main: 'bg-emerald-500', text: 'text-emerald-500', border: 'border-emerald-500', light: 'bg-emerald-50', gradient: 'from-emerald-500 to-teal-400' },
+            dark: { main: 'bg-slate-800', text: 'text-slate-800', border: 'border-slate-800', light: 'bg-slate-100', gradient: 'from-slate-800 to-slate-600' }
+        };
+
+        const EMOJIS = ['👤', '🦁', '🐱', '🦊', '🐻', '🐼', '🐨', '🐯', '🐸', '🦄', '🐲', '⭐', '💎', '🔥', '🌈'];
+
+        const App = () => {
+            const [students, setStudents] = useState(() => {
+                const saved = localStorage.getItem('econ_v5_students');
+                if (saved) return JSON.parse(saved);
+                return [
+                    ...INITIAL_STUDENTS.map(s => ({ 
+                        ...s, password: s.id, balance: 1000, profileEmoji: '👤', profileImg: null, 
+                        theme: 'purple', subscriptions: [], role: 'student' 
+                    })),
+                    { id: 'admin', name: '관리자', password: '0000', balance: 0, profileEmoji: '👑', profileImg: null, theme: 'dark', role: 'admin' }
+                ];
+            });
+
+            const [view, setView] = useState('login');
+            const [user, setUser] = useState(null);
+            const [history, setHistory] = useState(() => JSON.parse(localStorage.getItem('econ_v5_history') || '[]'));
+            const [products, setProducts] = useState(() => {
+                const saved = localStorage.getItem('econ_v5_products');
+                if (saved) return JSON.parse(saved);
+                return [{ id: 'default-1', name: '당일 성장 예금(24시간)', rate: 3.5, active: true, desc: '가장 기본적인 하루 예금' }];
+            });
+            const [selectedIds, setSelectedIds] = useState([]);
+            const [toast, setToast] = useState(null);
+            const [activeBanner, setActiveBanner] = useState(0);
+
+            useEffect(() => localStorage.setItem('econ_v5_students', JSON.stringify(students)), [students]);
+            useEffect(() => localStorage.setItem('econ_v5_history', JSON.stringify(history)), [history]);
+            useEffect(() => localStorage.setItem('econ_v5_products', JSON.stringify(products)), [products]);
+
+            // 배너 자동 전환
+            useEffect(() => {
+                const timer = setInterval(() => setActiveBanner(prev => (prev === 0 ? 1 : 0)), 5000);
+                return () => clearInterval(timer);
+            }, []);
+
+            const currentTheme = THEMES[user?.theme || 'purple'];
+
+            const showToast = (msg, type = 'success') => {
+                setToast({ msg, type });
+                setTimeout(() => setToast(null), 3000);
+            };
+
+            const checkEventTime = () => {
+                const now = new Date();
+                const start = new Date(2026, 2, 18, 8, 0, 0); // 3월 18일 08:00
+                const end = new Date(2026, 2, 20, 22, 0, 0);  // 3월 20일 22:00
+                return { active: now >= start && now <= end, waiting: now < start, ended: now > end };
+            };
+
+            const handleLogin = (name, pw) => {
+                const found = students.find(s => s.name === name && s.password === pw);
+                if (found) {
+                    setUser(found);
+                    setView('home');
+                    showToast(`${found.name}님 환영합니다.`);
+                } else {
+                    showToast('정보를 다시 확인해주세요.', 'error');
+                }
+            };
+
+            const updateUser = (data) => {
+                setStudents(prev => prev.map(s => s.id === user.id ? { ...s, ...data } : s));
+                setUser(prev => ({ ...prev, ...data }));
+            };
+
+            const handleAction = (type, amount, reason) => {
+                const val = parseInt(amount);
+                if (isNaN(val) || val <= 0 || selectedIds.length === 0) return showToast('금액과 대상을 확인하세요.', 'error');
+
+                const groupId = Date.now();
+                const targetNames = students.filter(s => selectedIds.includes(s.id)).map(s => s.name);
+                
+                setStudents(prev => prev.map(s => {
+                    if (selectedIds.includes(s.id)) {
+                        return { ...s, balance: type === 'issue' ? s.balance + val : s.balance - val };
+                    }
+                    return s;
+                }));
+
+                const newLog = {
+                    id: groupId, targets: [...selectedIds], targetNames,
+                    summary: `${targetNames[0]}${targetNames.length > 1 ? ` 외 ${targetNames.length - 1}명` : ''}`,
+                    type, amount: val, reason: reason || (type === 'issue' ? '기타 지급' : '기타 벌칙'),
+                    date: new Date().toLocaleString(), status: 'active'
+                };
+
+                setHistory(prev => [newLog, ...prev]);
+                setSelectedIds([]);
+                showToast('거래 처리가 완료되었습니다.');
+            };
+
+            // 거래 취소 (복구) 기능
+            const cancelTransaction = (logId) => {
+                const log = history.find(h => h.id === logId);
+                if (!log || log.status === 'cancelled') return;
+
+                setStudents(prev => prev.map(s => {
+                    if (log.targets.includes(s.id)) {
+                        return { ...s, balance: log.type === 'issue' ? s.balance - log.amount : s.balance + log.amount };
+                    }
+                    return s;
+                }));
+
+                setHistory(prev => prev.map(h => h.id === logId ? { ...h, status: 'cancelled' } : h));
+                showToast('거래가 취소 및 복구되었습니다.');
+            };
+
+            const eventStatus = checkEventTime();
+
+            if (view === 'login') return (
+                <div className="min-h-screen flex items-center justify-center bg-[#f0f2f5] p-4">
+                    <div className="max-w-4xl w-full bg-white rounded-[2.5rem] shadow-2xl flex flex-col md:flex-row overflow-hidden border border-slate-200">
+                        <div className="md:w-5/12 bg-indigo-600 p-12 text-white flex flex-col justify-center relative">
+                            <h1 className="text-4xl font-black mb-4 z-10 leading-tight">또다른<br/>경제교실</h1>
+                            <p className="text-indigo-100 font-medium z-10">스마트한 금융 습관의 시작</p>
+                            <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-white/10 rounded-full blur-3xl"></div>
+                        </div>
+                        <div className="md:w-7/12 p-12 bg-white">
+                            <h2 className="text-2xl font-black text-slate-800 mb-8">학생/교사 로그인</h2>
+                            <div className="space-y-5">
+                                <input id="uname" type="text" placeholder="성함 입력" className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-400 outline-none font-bold" />
+                                <input id="upw" type="password" placeholder="비밀번호" className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-400 outline-none font-bold" />
+                                <button onClick={() => handleLogin(document.getElementById('uname').value, document.getElementById('upw').value)} className="w-full bg-indigo-600 text-white py-5 rounded-2xl font-black text-lg shadow-xl hover:bg-indigo-700 transition-all mt-4">접속하기</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+
+            return (
+                <div className="min-h-screen bg-[#f3f4f9] pb-20">
+                    {/* 상단 롤링 배너 */}
+                    <div className={`bg-gradient-to-r ${currentTheme.gradient} text-white py-2.5 px-6 sticky top-0 z-[60] shadow-md overflow-hidden`}>
+                        <div className="max-w-6xl mx-auto flex items-center justify-between">
+                            {activeBanner === 0 ? (
+                                <div className="flex items-center gap-3 animate-fade flex-1 truncate">
+                                    <span className="bg-white/20 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider">Public</span>
+                                    <p className="text-sm font-bold truncate cursor-pointer" onClick={() => window.open('https://naver.me/xQJAYc2r')}>📢 경제교실 이름 공모전이 시작되었습니다! 클릭하여 참여하세요.</p>
+                                </div>
+                            ) : (
+                                <div className="flex items-center gap-3 animate-fade flex-1 truncate">
+                                    <span className="bg-white/20 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider">Event</span>
+                                    <p className="text-sm font-bold truncate">🔥 [단 62시간] 1분에 1% 파격 이자 예금! 3/18 08:00 오픈 확정</p>
+                                </div>
+                            )}
+                            <div className="flex gap-1">
+                                <div className={`w-1.5 h-1.5 rounded-full transition-all ${activeBanner === 0 ? 'bg-white' : 'bg-white/30'}`}></div>
+                                <div className={`w-1.5 h-1.5 rounded-full transition-all ${activeBanner === 1 ? 'bg-white' : 'bg-white/30'}`}></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <nav className="bg-white/80 backdrop-blur-md border-b border-slate-200 px-6 py-4 flex justify-between items-center sticky top-[45px] z-50">
+                        <div className="flex items-center gap-2 cursor-pointer" onClick={() => setView('home')}>
+                            <div className={`w-9 h-9 ${currentTheme.main} rounded-xl flex items-center justify-center text-white shadow-lg`}><i className="fas fa-landmark text-sm"></i></div>
+                            <span className="font-black text-lg tracking-tighter text-slate-800">ECONOMY</span>
+                        </div>
+                        <div className="flex bg-slate-100 p-1 rounded-xl">
+                            <button onClick={() => setView('home')} className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${view === 'home' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>홈</button>
+                            <button onClick={() => setView('bank')} className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${view === 'bank' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>은행</button>
+                            {user.role === 'admin' && (
+                                <button onClick={() => setView('admin')} className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${view === 'admin' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>관리</button>
+                            )}
+                        </div>
+                        <button onClick={() => setView('login')} className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-400 hover:bg-rose-50 hover:text-rose-500 transition-all"><i className="fas fa-sign-out-alt"></i></button>
+                    </nav>
+
+                    <main className="max-w-6xl mx-auto p-6 md:p-8 animate-fade">
+                        {view === 'home' && (
+                            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                                <div className="lg:col-span-8 space-y-8">
+                                    <div className="bg-white rounded-[2.5rem] p-10 custom-shadow relative overflow-hidden group">
+                                        <div className="relative z-10">
+                                            <p className="text-slate-400 font-bold text-sm mb-2">총 가용 자산</p>
+                                            <div className="flex items-baseline gap-2">
+                                                <span className={`text-7xl font-black tracking-tighter transition-all ${currentTheme.text}`}>{user.balance.toLocaleString()}</span>
+                                                <span className="text-2xl font-black text-slate-300">G</span>
+                                            </div>
+                                        </div>
+                                        <div className={`absolute top-1/2 -right-10 -translate-y-1/2 w-48 h-48 rounded-full ${currentTheme.light} flex items-center justify-center text-5xl opacity-30 group-hover:scale-110 transition-all duration-700`}>
+                                            <i className={`fas fa-coins ${currentTheme.text}`}></i>
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-white rounded-[2.5rem] p-8 custom-shadow">
+                                        <h3 className="text-lg font-black mb-6 flex items-center gap-2 text-slate-800">최근 거래 기록</h3>
+                                        <div className="space-y-4">
+                                            {history.filter(h => user.role === 'admin' || h.targets.includes(user.id)).slice(0, 15).map(h => (
+                                                <div key={h.id} className={`p-5 rounded-2xl flex items-center justify-between transition-all ${h.status === 'cancelled' ? 'bg-slate-50 border border-slate-100 opacity-40 grayscale' : 'bg-slate-50 hover:shadow-md hover:bg-white'}`}>
+                                                    <div className="flex items-center gap-4">
+                                                        <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${h.type === 'issue' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
+                                                            <i className={`fas fa-${h.type === 'issue' ? 'plus' : 'minus'} text-xs`}></i>
+                                                        </div>
+                                                        <div>
+                                                            <div className="flex items-center gap-2">
+                                                                <p className="text-sm font-black text-slate-800">{h.reason}</p>
+                                                                {h.status === 'cancelled' && <span className="text-[10px] font-black text-slate-400 border border-slate-300 px-1.5 py-0.5 rounded">취소됨</span>}
+                                                            </div>
+                                                            <p className="text-[10px] font-bold text-slate-400 uppercase">{h.date} • {h.summary}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <span className={`font-black text-lg ${h.type === 'issue' ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                                            {h.type === 'issue' ? '+' : '-'}{h.amount.toLocaleString()}G
+                                                        </span>
+                                                        {user.role === 'admin' && h.status === 'active' && (
+                                                            <button onClick={() => cancelTransaction(h.id)} className="block ml-auto text-[10px] font-bold text-slate-400 hover:text-rose-500 mt-1 underline">거래 취소하기</button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            {history.length === 0 && <p className="text-center py-10 text-slate-400 font-bold">기록이 없습니다.</p>}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="lg:col-span-4 space-y-8">
+                                    <div className="bg-white rounded-[2.5rem] p-8 custom-shadow text-center">
+                                        <div className="relative inline-block mb-4">
+                                            <div className={`w-24 h-24 rounded-[2rem] border-4 border-white shadow-xl overflow-hidden flex items-center justify-center text-5xl bg-slate-50 transition-all`}>
+                                                {user.profileImg ? <img src={user.profileImg} className="w-full h-full object-cover" /> : user.profileEmoji}
+                                            </div>
+                                            <label className="absolute -bottom-2 -right-2 w-9 h-9 bg-white rounded-full shadow-lg flex items-center justify-center text-slate-400 cursor-pointer hover:text-indigo-600 border border-slate-100">
+                                                <i className="fas fa-camera text-xs"></i>
+                                                <input type="file" className="hidden" accept="image/*" onChange={(e) => {
+                                                    const file = e.target.files[0];
+                                                    if(file) {
+                                                        const reader = new FileReader();
+                                                        reader.onloadend = () => updateUser({ profileImg: reader.result });
+                                                        reader.readAsDataURL(file);
+                                                    }
+                                                }} />
+                                            </label>
+                                        </div>
+                                        <h4 className="font-black text-slate-800 text-lg mb-0.5">{user.name}</h4>
+                                        <p className="text-[10px] font-black text-slate-400 mb-6 tracking-widest uppercase">{user.role === 'admin' ? 'Bank Admin' : `S-ID: ${user.id}`}</p>
+                                        
+                                        <div className="border-t border-slate-100 pt-6 space-y-6 text-left">
+                                            <div>
+                                                <p className="text-[10px] font-black text-slate-400 mb-3 uppercase tracking-widest">Icon Collection</p>
+                                                <div className="grid grid-cols-5 gap-2">
+                                                    {EMOJIS.map(e => (
+                                                        <button key={e} onClick={() => updateUser({ profileEmoji: e, profileImg: null })} className={`text-xl p-2 rounded-xl transition-all hover:bg-slate-100 ${user.profileEmoji === e && !user.profileImg ? 'bg-indigo-50 ring-1 ring-indigo-200 shadow-sm' : ''}`}>{e}</button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] font-black text-slate-400 mb-3 uppercase tracking-widest">Theme Palette</p>
+                                                <div className="flex gap-2.5">
+                                                    {Object.keys(THEMES).map(t => (
+                                                        <button key={t} onClick={() => updateUser({ theme: t })} className={`flex-1 h-8 rounded-lg ${THEMES[t].main} ${user.theme === t ? 'ring-4 ring-offset-2 ring-slate-200' : 'opacity-40 hover:opacity-100'}`}></button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {view === 'bank' && (
+                            <div className="space-y-8">
+                                {/* 특판 예금 안내 */}
+                                <div className="bg-slate-900 rounded-[2.5rem] p-10 text-white relative overflow-hidden">
+                                    <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-8">
+                                        <div className="flex-1 text-center md:text-left">
+                                            <span className="bg-amber-400 text-amber-950 px-3 py-1 rounded-full text-[10px] font-black uppercase mb-4 inline-block">Flash Event</span>
+                                            <h3 className="text-3xl md:text-4xl font-black mb-3 tracking-tighter leading-tight">1분당 1% 이자 지급<br/>초고속 성장 특별 예금</h3>
+                                            <p className="text-slate-400 font-medium max-w-lg">지정된 62시간 동안 가입 가능합니다. <br/>단 이틀간 제공되는 파격적인 수익률을 경험하세요.</p>
+                                        </div>
+                                        <div className="bg-white/10 p-8 rounded-3xl border border-white/10 text-center min-w-[240px] backdrop-blur-md">
+                                            <p className="text-[10px] font-black text-amber-400 uppercase mb-2 tracking-widest">오픈 카운트다운</p>
+                                            <p className="text-2xl font-black mb-1 leading-none">03. 18 (수)</p>
+                                            <p className="text-4xl font-black text-white leading-tight">08:00 AM</p>
+                                        </div>
+                                    </div>
+                                    <i className="fas fa-bolt text-[15rem] absolute -right-10 -bottom-10 text-white/5 rotate-12"></i>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    {/* 특판 상품 카드 (고정형) */}
+                                    <div className={`p-8 rounded-[2.5rem] border-2 flex flex-col justify-between transition-all ${eventStatus.active ? 'border-amber-400 bg-white shadow-2xl scale-[1.02]' : 'border-slate-100 bg-slate-100/50 grayscale opacity-80'}`}>
+                                        <div>
+                                            <div className="flex justify-between items-start mb-6">
+                                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl ${eventStatus.active ? 'bg-amber-100 text-amber-600' : 'bg-slate-200 text-slate-400'}`}>
+                                                    <i className="fas fa-fire"></i>
+                                                </div>
+                                                {eventStatus.active && <span className="bg-amber-100 text-amber-600 text-[10px] font-black px-2 py-1 rounded-lg">HOT</span>}
+                                            </div>
+                                            <h4 className="text-xl font-black text-slate-800 mb-1">62시간 타임어택 예금</h4>
+                                            <p className="text-xs font-bold text-slate-400 mb-6 leading-relaxed">이자율: 1분당 1%<br/>가입 제한 금액 없음</p>
+                                        </div>
+                                        <div>
+                                            <div className="flex justify-between items-end mb-6">
+                                                <span className="text-5xl font-black text-slate-800 tracking-tighter">1.0<span className="text-lg">%</span></span>
+                                                <span className="text-[10px] font-black text-slate-400 mb-1 uppercase">Per Minute</span>
+                                            </div>
+                                            <button 
+                                                disabled={!eventStatus.active}
+                                                onClick={() => {
+                                                    const amt = prompt('예치할 금액을 입력하세요.');
+                                                    const val = parseInt(amt);
+                                                    if(isNaN(val) || val <= 0) return;
+                                                    if(user.balance < val) return showToast('잔액이 부족합니다.', 'error');
+                                                    
+                                                    const sub = { id: Date.now(), name: '62hr 특판 예금', amount: val, interest: Math.floor(val * 0.01), isEvent: true, date: new Date().toLocaleDateString() };
+                                                    updateUser({ balance: user.balance - val, subscriptions: [...(user.subscriptions||[]), sub] });
+                                                    showToast('특판 예금 가입 성공!');
+                                                }}
+                                                className={`w-full py-4 rounded-2xl font-black shadow-lg transition-all ${eventStatus.active ? 'bg-amber-400 text-amber-950 hover:bg-amber-500 hover:scale-[1.02]' : 'bg-slate-300 text-white cursor-not-allowed'}`}>
+                                                {eventStatus.waiting ? '오픈 대기중' : eventStatus.ended ? '이벤트 종료' : '지금 즉시 가입'}
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* 동적 예금 리스트 */}
+                                    {products.filter(p => p.active).map(p => (
+                                        <div key={p.id} className="p-8 rounded-[2.5rem] border-2 border-slate-100 bg-white hover:border-indigo-200 transition-all flex flex-col justify-between group">
+                                            <div>
+                                                <div className="flex justify-between items-start mb-6">
+                                                    <div className={`w-12 h-12 rounded-2xl bg-slate-50 text-slate-400 flex items-center justify-center text-xl group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-all`}>
+                                                        <i className="fas fa-piggy-bank"></i>
+                                                    </div>
+                                                </div>
+                                                <h4 className="text-xl font-black text-slate-800 mb-1">{p.name}</h4>
+                                                <p className="text-xs font-bold text-slate-400 mb-6">{p.desc || '안정적인 성장을 돕는 예금'}</p>
+                                            </div>
+                                            <div>
+                                                <div className="flex justify-between items-end mb-6">
+                                                    <span className="text-5xl font-black text-slate-800 tracking-tighter">{p.rate}<span className="text-lg">%</span></span>
+                                                    <span className="text-[10px] font-black text-slate-400 mb-1 uppercase">Profit Rate</span>
+                                                </div>
+                                                <button onClick={() => {
+                                                    const amt = prompt(`${p.name}에 예치할 금액?`);
+                                                    const val = parseInt(amt);
+                                                    if(isNaN(val) || val <= 0) return;
+                                                    if(user.balance < val) return showToast('잔액이 부족합니다.', 'error');
+                                                    const sub = { id: Date.now(), name: p.name, amount: val, interest: Math.floor(val * (p.rate/100)), isEvent: false, date: new Date().toLocaleDateString() };
+                                                    updateUser({ balance: user.balance - val, subscriptions: [...(user.subscriptions||[]), sub] });
+                                                    showToast('예금 가입이 완료되었습니다.');
+                                                }} className="w-full py-4 rounded-2xl font-black bg-slate-800 text-white hover:bg-indigo-600 shadow-md transition-all">가입하기</button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <div className="bg-white rounded-[2.5rem] p-8 custom-shadow">
+                                    <h3 className="text-lg font-black mb-6 flex items-center gap-2">내가 가입한 금융 상품</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {user.subscriptions?.map(s => (
+                                            <div key={s.id} className={`p-6 rounded-[2rem] border-2 ${s.isEvent ? 'bg-amber-50/50 border-amber-200' : 'bg-slate-50 border-slate-100'} transition-all hover:shadow-inner`}>
+                                                <div className="flex justify-between items-start mb-4">
+                                                    <div>
+                                                        <div className="flex items-center gap-2">
+                                                            <p className="font-black text-slate-800">{s.name}</p>
+                                                            {s.isEvent && <span className="bg-amber-400 text-amber-900 text-[8px] font-black px-1.5 py-0.5 rounded tracking-tighter">EVENT</span>}
+                                                        </div>
+                                                        <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5 tracking-wider">{s.date} 개설</p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex justify-between items-end mb-6">
+                                                    <div>
+                                                        <p className="text-[9px] font-black text-slate-400 uppercase mb-0.5">예치 원금</p>
+                                                        <p className="text-xl font-black text-slate-800">{s.amount.toLocaleString()}<span className="text-sm font-bold ml-0.5">G</span></p>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <p className="text-[9px] font-black text-emerald-500 uppercase mb-0.5">예상 이자</p>
+                                                        <p className="text-xl font-black text-emerald-500">+{s.interest.toLocaleString()}<span className="text-sm font-bold ml-0.5">G</span></p>
+                                                    </div>
+                                                </div>
+                                                <button onClick={() => {
+                                                    const total = s.amount + s.interest;
+                                                    updateUser({ balance: user.balance + total, subscriptions: user.subscriptions.filter(x => x.id !== s.id) });
+                                                    showToast('만기 해지 및 전액 수령 완료!');
+                                                }} className="w-full bg-white border-2 border-slate-200 py-3 rounded-2xl font-black text-xs text-slate-600 hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all">만기 전액 수령</button>
+                                            </div>
+                                        ))}
+                                        {(user.subscriptions || []).length === 0 && (
+                                            <div className="col-span-full py-12 text-center border-2 border-dashed border-slate-100 rounded-[2rem]">
+                                                <p className="text-slate-400 font-bold text-sm">가입한 예금 상품이 없습니다.</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {view === 'admin' && user.role === 'admin' && (
+                            <div className="space-y-8 animate-fade">
+                                {/* 거래 관리 */}
+                                <div className="bg-white rounded-[2.5rem] p-10 custom-shadow">
+                                    <div className="flex justify-between items-center mb-8">
+                                        <h3 className="text-2xl font-black text-slate-800">지급 및 벌칙 일괄 관리</h3>
+                                        <div className="flex gap-2">
+                                            <button onClick={() => setSelectedIds(students.filter(s=>s.role!=='admin').map(s=>s.id))} className="text-[10px] font-black bg-slate-100 px-3 py-2 rounded-xl text-slate-500 hover:bg-indigo-600 hover:text-white transition-all">전체 선택</button>
+                                            <button onClick={() => setSelectedIds([])} className="text-[10px] font-black bg-slate-100 px-3 py-2 rounded-xl text-slate-500 hover:bg-rose-600 hover:text-white transition-all">선택 해제</button>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3 mb-10 max-h-[350px] overflow-y-auto pr-2 no-scrollbar">
+                                        {students.filter(s => s.role !== 'admin').map(s => (
+                                            <button key={s.id} onClick={() => setSelectedIds(prev => prev.includes(s.id) ? prev.filter(i => i !== s.id) : [...prev, s.id])}
+                                                className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 relative ${selectedIds.includes(s.id) ? 'border-indigo-600 bg-indigo-50 shadow-md' : 'border-slate-100 bg-white hover:border-indigo-200'}`}>
+                                                <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-xl overflow-hidden shadow-inner">
+                                                    {s.profileImg ? <img src={s.profileImg} className="w-full h-full object-cover" /> : s.profileEmoji}
+                                                </div>
+                                                <span className="text-[11px] font-black text-slate-800">{s.name}</span>
+                                                <span className="text-[9px] font-bold text-slate-400">{s.balance.toLocaleString()}G</span>
+                                                {selectedIds.includes(s.id) && <div className="absolute top-1 right-1 w-4 h-4 bg-indigo-600 rounded-full flex items-center justify-center text-[8px] text-white"><i className="fas fa-check"></i></div>}
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    <div className="bg-slate-50 p-8 rounded-[2rem] border border-slate-100">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-black text-slate-400 ml-1 uppercase">금액 설정</label>
+                                                <input id="amt" type="number" placeholder="0G" className="w-full px-6 py-4 bg-white rounded-2xl outline-none font-black shadow-sm border border-slate-100 focus:border-indigo-400 transition-all" />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-black text-slate-400 ml-1 uppercase">사유 입력</label>
+                                                <input id="reason" type="text" placeholder="성실 보상, 벌칙 등" className="w-full px-6 py-4 bg-white rounded-2xl outline-none font-black shadow-sm border border-slate-100 focus:border-indigo-400 transition-all" />
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-4">
+                                            <button onClick={() => handleAction('issue', document.getElementById('amt').value, document.getElementById('reason').value)} className="flex-1 bg-emerald-500 text-white py-5 rounded-2xl font-black text-lg shadow-lg hover:bg-emerald-600 hover:-translate-y-1 transition-all">장학금 지급</button>
+                                            <button onClick={() => handleAction('penalty', document.getElementById('amt').value, document.getElementById('reason').value)} className="flex-1 bg-rose-500 text-white py-5 rounded-2xl font-black text-lg shadow-lg hover:bg-rose-600 hover:-translate-y-1 transition-all">벌칙금 부과</button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* 예금 상품 관리 */}
+                                <div className="bg-white rounded-[2.5rem] p-10 custom-shadow">
+                                    <div className="flex justify-between items-center mb-8">
+                                        <h3 className="text-2xl font-black text-slate-800">예금 상품 컨트롤러</h3>
+                                        <button onClick={() => {
+                                            const name = prompt('새로운 예금 명칭?');
+                                            const rate = prompt('이자율 (%)?');
+                                            const desc = prompt('상품 설명?');
+                                            if(name && rate) setProducts([...products, { id: Date.now(), name, rate: parseFloat(rate), desc, active: true }]);
+                                        }} className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-black text-sm shadow-md hover:bg-indigo-700 transition-all flex items-center gap-2">
+                                            <i className="fas fa-plus"></i> 상품 추가
+                                        </button>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        {products.map(p => (
+                                            <div key={p.id} className="p-6 rounded-3xl border-2 border-slate-50 bg-slate-50/50 flex flex-col md:flex-row justify-between items-center gap-4 transition-all hover:bg-white hover:border-slate-100">
+                                                <div className="flex items-center gap-5 w-full md:w-auto">
+                                                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl shadow-sm ${p.active ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-400'}`}>
+                                                        <i className={`fas fa-${p.active ? 'check' : 'times'}`}></i>
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="font-black text-slate-800">{p.name}</h4>
+                                                        <p className="text-xs font-bold text-slate-400">수익률: {p.rate}% • {p.active ? '판매 중' : '판매 중지'}</p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex gap-2 w-full md:w-auto">
+                                                    <button onClick={() => setProducts(products.map(x => x.id === p.id ? {...x, active: !x.active} : x))} 
+                                                        className={`flex-1 md:flex-none px-4 py-2 rounded-xl font-bold text-xs transition-all ${p.active ? 'bg-rose-50 text-rose-500 hover:bg-rose-100' : 'bg-emerald-50 text-emerald-500 hover:bg-emerald-100'}`}>
+                                                        {p.active ? '비활성화' : '활성화'}
+                                                    </button>
+                                                    <button onClick={() => {
+                                                        const newRate = prompt('수정할 이자율 (%)?', p.rate);
+                                                        if(newRate) setProducts(products.map(x => x.id === p.id ? {...x, rate: parseFloat(newRate)} : x));
+                                                    }} className="flex-1 md:flex-none px-4 py-2 bg-slate-100 text-slate-600 rounded-xl font-bold text-xs hover:bg-slate-200">수정</button>
+                                                    <button onClick={() => {
+                                                        if(confirm('정말 삭제하시겠습니까?')) setProducts(products.filter(x => x.id !== p.id));
+                                                    }} className="w-10 h-10 rounded-xl flex items-center justify-center text-slate-300 hover:text-rose-500 transition-all"><i className="fas fa-trash-alt"></i></button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </main>
+
+                    {toast && (
+                        <div className={`fixed bottom-10 left-1/2 -translate-x-1/2 px-8 py-4 rounded-2xl text-white font-black shadow-2xl animate-fade z-[100] flex items-center gap-3 border border-white/20 ${toast.type === 'error' ? 'bg-rose-500' : 'bg-slate-900'}`}>
+                            <i className={`fas fa-${toast.type === 'error' ? 'exclamation-circle' : 'check-circle'}`}></i>
+                            {toast.msg}
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
