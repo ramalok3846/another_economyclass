@@ -4,14 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>또다른 경제교실 - 스마트 금융 시스템</title>
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- React & Babel -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Tailwind & Icons -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;800&display=swap');
-        body { font-family: 'Pretendard', sans-serif; background-color: #f3f4f9; margin: 0; }
+        body { font-family: 'Pretendard', sans-serif; background-color: #f3f4f9; margin: 0; transition: background-color 0.3s; }
+        .glass-card { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.3); }
         .animate-fade { animation: fadeIn 0.3s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .no-scrollbar::-webkit-scrollbar { display: none; }
@@ -20,46 +23,59 @@
 <body>
     <div id="root"></div>
 
-    <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, query, limit, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, updateDoc, arrayUnion, query, orderBy, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Firebase Config
         const firebaseConfig = JSON.parse(__firebase_config);
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'economy-system-prod';
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'economy-system-v4';
 
-        // 전역 유틸리티 등록
         window.FB_UTILS = { 
             auth, db, appId, doc, setDoc, getDoc, onSnapshot, collection, 
-            signInAnonymously, signInWithCustomToken, onAuthStateChanged, deleteDoc 
+            updateDoc, arrayUnion, query, orderBy, deleteDoc, 
+            signInAnonymously, signInWithCustomToken, onAuthStateChanged 
         };
     </script>
 
     <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
+        const { useState, useEffect, useMemo } = window.React;
 
         const INITIAL_STUDENTS = [
-            { id: '6701', name: '강유주' }, { id: '6702', name: '고윤서' }, { id: '6703', name: '공윤호' },
-            { id: '6704', name: '김성민' }, { id: '6705', name: '김태윤' }, { id: '6706', name: '나현웅' },
-            { id: '6707', name: '류찬혁' }, { id: '6708', name: '문예린' }, { id: '6709', name: '박소율' },
-            { id: '6710', name: '박채윤' }, { id: '6711', name: '배예람' }, { id: '6712', name: '백한율' },
-            { id: '6713', name: '우은서' }, { id: '6714', name: '우진서' }, { id: '6715', name: '윤소영' },
-            { id: '6716', name: '임소윤' }, { id: '6717', name: '임수현' }, { id: '6718', name: '정시후' },
-            { id: '6719', name: '조수빈' }, { id: '6720', name: '최리한' }, { id: '6721', name: '최은수' },
-            { id: '6722', name: '최준성' }, { id: '6723', name: '하예준' }, { id: '6724', name: '허단' }
+            // 기존 학생들
+            { id: '6701', name: '강유주', password: '6701' }, { id: '6702', name: '고윤서', password: '6702' }, { id: '6703', name: '공윤호', password: '6703' },
+            { id: '6704', name: '김성민', password: '6704' }, { id: '6705', name: '김태윤', password: '6705' }, { id: '6706', name: '나현웅', password: '6706' },
+            { id: '6707', name: '류찬혁', password: '6707' }, { id: '6708', name: '문예린', password: '6708' }, { id: '6709', name: '박소율', password: '6709' },
+            { id: '6710', name: '박채윤', password: '6710' }, { id: '6711', name: '배예람', password: '6711' }, { id: '6712', name: '백한율', password: '6712' },
+            { id: '6713', name: '우은서', password: '6713' }, { id: '6714', name: '우진서', password: '6714' }, { id: '6715', name: '윤소영', password: '6715' },
+            { id: '6716', name: '임소윤', password: '6716' }, { id: '6717', name: '임수현', password: '6717' }, { id: '6718', name: '정시후', password: '6718' },
+            { id: '6719', name: '조수빈', password: '6719' }, { id: '6720', name: '최리한', password: '6720' }, { id: '6721', name: '최은수', password: '6721' },
+            { id: '6722', name: '최준성_기존', password: '6722' }, { id: '6723', name: '하예준', password: '6723' }, { id: '6724', name: '허단', password: '6724' },
+            // 신규 추가 학생들
+            { id: 'new01', name: '리드인', password: '리드인' },
+            { id: 'new02', name: '김단우', password: '01' },
+            { id: 'new03', name: '김성원', password: '02' },
+            { id: 'new04', name: '류다인', password: '03' },
+            { id: 'new05', name: '문준서', password: '04' },
+            { id: 'new06', name: '이서은', password: '05' },
+            { id: 'new07', name: '임신원', password: '06' },
+            { id: 'new08', name: '임유하', password: '07' },
+            { id: 'new09', name: '임채훈', password: '08' },
+            { id: 'new10', name: '정소이', password: '09' },
+            { id: 'new11', name: '조예성', password: '10' },
+            { id: 'new12', name: '최준성', password: '11' },
+            { id: 'new13', name: '하현서', password: '12' }
         ];
 
         const THEMES = {
-            purple: { main: 'bg-indigo-600', text: 'text-indigo-600', light: 'bg-indigo-50', gradient: 'from-indigo-600 to-purple-500' },
-            blue: { main: 'bg-blue-600', text: 'text-blue-600', light: 'bg-blue-50', gradient: 'from-blue-600 to-cyan-500' },
-            rose: { main: 'bg-rose-500', text: 'text-rose-500', light: 'bg-rose-50', gradient: 'from-rose-500 to-orange-400' },
-            emerald: { main: 'bg-emerald-500', text: 'text-emerald-500', light: 'bg-emerald-50', gradient: 'from-emerald-500 to-teal-400' },
-            dark: { main: 'bg-slate-800', text: 'text-slate-800', light: 'bg-slate-100', gradient: 'from-slate-800 to-slate-600' }
+            purple: { main: 'bg-indigo-600', text: 'text-indigo-600', light: 'bg-indigo-50', gradient: 'from-indigo-600 to-violet-600' },
+            blue: { main: 'bg-blue-600', text: 'text-blue-600', light: 'bg-blue-50', gradient: 'from-blue-600 to-cyan-600' },
+            rose: { main: 'bg-rose-500', text: 'text-rose-500', light: 'bg-rose-50', gradient: 'from-rose-500 to-orange-500' },
+            emerald: { main: 'bg-emerald-500', text: 'text-emerald-500', light: 'bg-emerald-50', gradient: 'from-emerald-500 to-teal-500' },
+            dark: { main: 'bg-slate-800', text: 'text-slate-800', light: 'bg-slate-100', gradient: 'from-slate-800 to-slate-900' }
         };
 
         const App = () => {
@@ -67,90 +83,78 @@
             const [fbUser, setFbUser] = useState(null);
             const [isLoading, setIsLoading] = useState(true);
             const [students, setStudents] = useState([]);
+            const [products, setProducts] = useState([]);
+            const [history, setHistory] = useState([]);
             const [user, setUser] = useState(null);
             const [view, setView] = useState('login');
-            const [history, setHistory] = useState([]);
-            const [products, setProducts] = useState([]);
-            const [toast, setToast] = useState(null);
             const [selectedIds, setSelectedIds] = useState([]);
+            const [toast, setToast] = useState(null);
 
-            // 1. Firebase Bridge
+            // 1. Firebase 연동 대기
             useEffect(() => {
-                const checkFB = setInterval(() => {
+                const checkFB = setInterval(async () => {
                     if (window.FB_UTILS) {
-                        setFb(window.FB_UTILS);
+                        const utils = window.FB_UTILS;
+                        setFb(utils);
                         clearInterval(checkFB);
+                        try {
+                            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                                await utils.signInWithCustomToken(utils.auth, __initial_auth_token);
+                            } else {
+                                await utils.signInAnonymously(utils.auth);
+                            }
+                        } catch (e) { console.error("Auth Fail", e); }
+                        utils.onAuthStateChanged(utils.auth, (u) => u && setFbUser(u));
                     }
                 }, 100);
                 return () => clearInterval(checkFB);
             }, []);
 
-            // 2. Auth Sequence (RULE 3)
-            useEffect(() => {
-                if (!fb) return;
-                const runAuth = async () => {
-                    try {
-                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                            await fb.signInWithCustomToken(fb.auth, __initial_auth_token);
-                        } else {
-                            await fb.signInAnonymously(fb.auth);
-                        }
-                    } catch (e) {
-                        console.error("Auth Failure", e);
-                        setIsLoading(false); // 에러나도 로딩은 끔 (오프라인 모드 대비)
-                    }
-                };
-                runAuth();
-                const unsub = fb.onAuthStateChanged(fb.auth, setFbUser);
-                return () => unsub();
-            }, [fb]);
-
-            // 3. Data Sync (RULE 1 & 2)
+            // 2. 실시간 데이터 동기화
             useEffect(() => {
                 if (!fb || !fbUser) return;
-
                 const { db, appId, collection, onSnapshot, doc, setDoc } = fb;
-
-                // Sync Students & Initialize
+                
                 const unsubStudents = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'students'), async (snap) => {
                     if (snap.empty) {
-                        // 초기 데이터 생성
-                        const batch = INITIAL_STUDENTS.map(s => 
+                        const ops = INITIAL_STUDENTS.map(s => 
                             setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'students', s.id), {
-                                ...s, password: s.id, balance: 1000, profileEmoji: '👤', theme: 'purple', subscriptions: [], role: 'student'
+                                ...s, balance: 1000, profileEmoji: '👤', theme: 'purple', subscriptions: [], role: 'student'
                             })
                         );
-                        batch.push(setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'students', 'admin'), {
-                            id: 'admin', name: '관리자', password: '0000', balance: 0, profileEmoji: '👑', theme: 'dark', role: 'admin'
+                        // 관리자 계정 (비밀번호: cjs0128)
+                        ops.push(setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'students', 'admin'), {
+                            id: 'admin', name: '관리자', password: 'cjs0128', balance: 0, profileEmoji: '👑', theme: 'dark', role: 'admin'
                         }));
-                        await Promise.all(batch);
+                        await Promise.all(ops);
                     } else {
-                        setStudents(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+                        const list = snap.docs.map(d => d.data());
+                        // 혹시 관리자 비번이 이전 버전이면 업데이트
+                        const adminDoc = snap.docs.find(d => d.id === 'admin');
+                        if (adminDoc && adminDoc.data().password !== 'cjs0128') {
+                            await updateStudent('admin', { password: 'cjs0128' });
+                        }
+                        setStudents(list);
                         setIsLoading(false);
                     }
-                }, (err) => {
-                    console.error("Student Sync Error", err);
-                    setIsLoading(false);
                 });
 
-                // Sync History
-                const unsubHistory = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'history'), (snap) => {
-                    setHistory(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => b.timestamp - a.timestamp));
-                });
-
-                // Sync Products
                 const unsubProducts = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'products'), (snap) => {
-                    setProducts(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+                    setProducts(snap.docs.map(d => d.data()));
                 });
 
-                return () => { unsubStudents(); unsubHistory(); unsubProducts(); };
+                const unsubHistory = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'history'), (snap) => {
+                    setHistory(snap.docs.map(d => d.data()).sort((a,b) => b.timestamp - a.timestamp));
+                });
+
+                return () => { unsubStudents(); unsubProducts(); unsubHistory(); };
             }, [fb, fbUser]);
 
-            // 4. Update Current User
+            // 로그인 상태 유지
             useEffect(() => {
-                if (user && students.length > 0) {
-                    const u = students.find(s => s.id === user.id);
-                    if (u) setUser(u);
+                if (user) {
+                    const current = students.find(s => s.id === user.id);
+                    if (current) setUser(current);
                 }
             }, [students]);
 
@@ -164,66 +168,65 @@
                 if (found) {
                     setUser(found);
                     setView('home');
-                    showToast(`${found.name}님 접속되었습니다.`);
+                    showToast(`${found.name}님 환영합니다.`);
                 } else {
                     showToast('성함 또는 비밀번호가 틀립니다.', 'error');
                 }
             };
 
-            const updateUser = async (data) => {
-                if (!fb || !user) return;
-                await fb.setDoc(fb.doc(fb.db, 'artifacts', fb.appId, 'public', 'data', 'students', user.id), data, { merge: true });
+            const updateStudent = async (id, data) => {
+                if (!fb) return;
+                await fb.setDoc(fb.doc(fb.db, 'artifacts', fb.appId, 'public', 'data', 'students', id), data, { merge: true });
             };
 
-            const handleAction = async (type, amount, reason) => {
+            const handleBulkAction = async (type, amount, reason) => {
+                if (!amount || isNaN(amount) || selectedIds.length === 0) {
+                    return showToast('대상과 금액을 확인하세요.', 'error');
+                }
                 const val = parseInt(amount);
-                if (!val || val <= 0 || selectedIds.length === 0) return showToast('대상과 금액을 확인하세요.', 'error');
-                
-                const promises = selectedIds.map(id => {
+                const updates = selectedIds.map(id => {
                     const s = students.find(x => x.id === id);
                     const newBal = type === 'issue' ? s.balance + val : s.balance - val;
-                    return fb.setDoc(fb.doc(fb.db, 'artifacts', fb.appId, 'public', 'data', 'students', id), { balance: newBal }, { merge: true });
+                    return updateStudent(id, { balance: newBal });
                 });
 
-                promises.push(fb.setDoc(fb.doc(fb.db, 'artifacts', fb.appId, 'public', 'data', 'history', Date.now().toString()), {
+                updates.push(fb.setDoc(fb.doc(fb.db, 'artifacts', fb.appId, 'public', 'data', 'history', Date.now().toString()), {
                     targets: [...selectedIds],
-                    summary: `${students.find(x=>x.id===selectedIds[0]).name} 외 ${selectedIds.length-1}명`,
-                    type, amount: val, reason: reason || '기타',
+                    summary: `${students.find(x=>x.id===selectedIds[0])?.name} 외 ${selectedIds.length-1}명`,
+                    type, amount: val, reason: reason || (type === 'issue' ? '지급' : '차감'),
                     date: new Date().toLocaleString(),
                     timestamp: Date.now()
                 }));
 
-                await Promise.all(promises);
+                await Promise.all(updates);
                 setSelectedIds([]);
-                showToast('거래가 정상 처리되었습니다.');
+                showToast('정상 처리되었습니다.');
             };
 
             const currentTheme = THEMES[user?.theme || 'purple'];
 
             if (isLoading) return (
-                <div className="min-h-screen flex items-center justify-center bg-slate-50">
-                    <div className="text-center animate-pulse">
-                        <div className="w-16 h-16 bg-indigo-600 rounded-2xl mx-auto mb-4 flex items-center justify-center text-white text-2xl">
-                            <i className="fas fa-landmark"></i>
-                        </div>
-                        <p className="font-black text-slate-400">금융 시스템 연결 중...</p>
+                <div className="min-h-screen flex items-center justify-center bg-white">
+                    <div className="text-center">
+                        <div className={`w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-4`}></div>
+                        <p className="font-bold text-slate-500">클라우드 동기화 중...</p>
                     </div>
                 </div>
             );
 
             if (view === 'login') return (
                 <div className="min-h-screen flex items-center justify-center bg-[#f0f2f5] p-4">
-                    <div className="max-w-4xl w-full bg-white rounded-[2.5rem] shadow-2xl flex flex-col md:flex-row overflow-hidden border border-slate-200">
-                        <div className={`md:w-5/12 bg-indigo-600 p-12 text-white flex flex-col justify-center`}>
+                    <div className="max-w-4xl w-full bg-white rounded-[2.5rem] shadow-2xl flex flex-col md:flex-row overflow-hidden">
+                        <div className="md:w-5/12 bg-indigo-600 p-12 text-white flex flex-col justify-center">
                             <h1 className="text-4xl font-black mb-4 leading-tight">또다른<br/>경제교실</h1>
-                            <p className="text-indigo-100 font-medium">실시간 금융 관리 시스템</p>
+                            <p className="text-indigo-100 font-medium">Smart Banking System v4</p>
                         </div>
-                        <div className="md:w-7/12 p-12">
-                            <h2 className="text-2xl font-black text-slate-800 mb-8 tracking-tighter">로그인</h2>
+                        <div className="md:w-7/12 p-12 bg-white">
+                            <h2 className="text-2xl font-black text-slate-800 mb-8">로그인</h2>
                             <div className="space-y-4">
-                                <input id="u_name" type="text" placeholder="이름 입력" className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-400 outline-none font-bold" />
-                                <input id="u_pw" type="password" placeholder="비밀번호" className="w-full px-6 py-4 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-indigo-400 outline-none font-bold" />
-                                <button onClick={() => handleLogin(document.getElementById('u_name').value, document.getElementById('u_pw').value)} className="w-full bg-indigo-600 text-white py-5 rounded-2xl font-black text-lg shadow-xl hover:bg-indigo-700 transition-all mt-4">접속하기</button>
+                                <input id="u_name" type="text" placeholder="성함" className="w-full px-6 py-4 bg-slate-50 rounded-2xl focus:ring-2 focus:ring-indigo-400 outline-none font-bold" />
+                                <input id="u_pw" type="password" placeholder="비밀번호" className="w-full px-6 py-4 bg-slate-50 rounded-2xl focus:ring-2 focus:ring-indigo-400 outline-none font-bold" />
+                                <button onClick={() => handleLogin(document.getElementById('u_name').value, document.getElementById('u_pw').value)} className="w-full bg-indigo-600 text-white py-5 rounded-2xl font-black text-lg shadow-xl hover:bg-indigo-700 transition-all mt-4 transform active:scale-95">입장하기</button>
                             </div>
                         </div>
                     </div>
@@ -238,9 +241,9 @@
                             <span className="font-black text-lg tracking-tighter text-slate-800 uppercase">ECONOMY</span>
                         </div>
                         <div className="flex bg-slate-100 p-1 rounded-xl">
-                            <button onClick={() => setView('home')} className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${view === 'home' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-50'}`}>홈</button>
-                            <button onClick={() => setView('bank')} className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${view === 'bank' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-50'}`}>은행</button>
-                            {user.role === 'admin' && <button onClick={() => setView('admin')} className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${view === 'admin' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-50'}`}>관리</button>}
+                            <button onClick={() => setView('home')} className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${view === 'home' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>홈</button>
+                            <button onClick={() => setView('bank')} className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${view === 'bank' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>은행</button>
+                            {user.role === 'admin' && <button onClick={() => setView('admin')} className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${view === 'admin' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>관리</button>}
                         </div>
                         <button onClick={() => { setView('login'); setUser(null); }} className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-400 hover:text-rose-500 transition-all"><i className="fas fa-sign-out-alt"></i></button>
                     </nav>
@@ -249,53 +252,56 @@
                         {view === 'home' && (
                             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                                 <div className="lg:col-span-8 space-y-8">
-                                    <div className="bg-white rounded-[2.5rem] p-10 shadow-lg relative overflow-hidden">
-                                        <p className="text-slate-400 font-bold text-sm mb-2">총 자산</p>
+                                    <div className="bg-white rounded-[2.5rem] p-10 shadow-lg relative overflow-hidden group">
+                                        <div className={`absolute top-0 right-0 w-64 h-64 bg-gradient-to-br ${currentTheme.gradient} opacity-5 -mr-20 -mt-20 rounded-full`}></div>
+                                        <p className="text-slate-400 font-bold text-sm mb-2 uppercase tracking-widest">나의 잔액</p>
                                         <div className="flex items-baseline gap-2 relative z-10">
                                             <span className={`text-7xl font-black tracking-tighter ${currentTheme.text}`}>{user.balance.toLocaleString()}</span>
                                             <span className="text-2xl font-black text-slate-300">G</span>
                                         </div>
-                                        <div className={`absolute top-1/2 -right-10 -translate-y-1/2 w-48 h-48 rounded-full ${currentTheme.light} flex items-center justify-center text-5xl opacity-30`}>
-                                            <i className="fas fa-coins"></i>
-                                        </div>
                                     </div>
-
                                     <div className="bg-white rounded-[2.5rem] p-8 shadow-sm">
-                                        <h3 className="text-lg font-black mb-6">최근 거래 기록</h3>
+                                        <h3 className="text-lg font-black text-slate-800 mb-6">최근 거래 내역</h3>
                                         <div className="space-y-4">
-                                            {history.filter(h => user.role === 'admin' || h.targets.includes(user.id)).slice(0, 8).map(h => (
-                                                <div key={h.id} className="p-5 bg-slate-50 rounded-2xl flex justify-between items-center">
+                                            {history.filter(h => user.role === 'admin' || h.targets.includes(user.id)).slice(0, 10).map((h, i) => (
+                                                <div key={i} className="p-5 bg-slate-50 rounded-2xl flex justify-between items-center">
                                                     <div className="flex items-center gap-4">
                                                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${h.type === 'issue' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
                                                             <i className={`fas fa-${h.type === 'issue' ? 'plus' : 'minus'} text-xs`}></i>
                                                         </div>
                                                         <div>
-                                                            <p className="text-sm font-black text-slate-800">{h.reason}</p>
-                                                            <p className="text-[10px] font-bold text-slate-400">{h.date}</p>
+                                                            <p className="text-sm font-black text-slate-800 leading-tight">{h.reason}</p>
+                                                            <p className="text-[10px] font-bold text-slate-400 mt-1">{h.date}</p>
                                                         </div>
                                                     </div>
-                                                    <span className={`font-black text-lg ${h.type === 'issue' ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                                    <p className={`font-black text-lg ${h.type === 'issue' ? 'text-emerald-500' : 'text-rose-500'}`}>
                                                         {h.type === 'issue' ? '+' : '-'}{h.amount.toLocaleString()}G
-                                                    </span>
+                                                    </p>
                                                 </div>
                                             ))}
                                         </div>
                                     </div>
                                 </div>
-
                                 <div className="lg:col-span-4 space-y-8">
                                     <div className="bg-white rounded-[2.5rem] p-8 shadow-sm text-center">
-                                        <div className="w-24 h-24 rounded-[2rem] bg-slate-50 mx-auto mb-4 flex items-center justify-center text-5xl border-4 border-white shadow-md">
-                                            {user.profileEmoji}
-                                        </div>
+                                        <div className="w-24 h-24 rounded-[2.5rem] bg-slate-50 mx-auto mb-4 flex items-center justify-center text-5xl border-4 border-white shadow-md">{user.profileEmoji}</div>
                                         <h4 className="font-black text-slate-800 text-lg">{user.name}</h4>
-                                        <p className="text-[10px] font-black text-slate-400 mb-6 uppercase tracking-widest">{user.role}</p>
-                                        <div className="border-t border-slate-50 pt-6">
-                                            <p className="text-[10px] font-black text-slate-400 mb-3 uppercase">테마 변경</p>
-                                            <div className="flex gap-2">
-                                                {Object.keys(THEMES).map(t => (
-                                                    <button key={t} onClick={() => updateUser({ theme: t })} className={`flex-1 h-8 rounded-lg ${THEMES[t].main} ${user.theme === t ? 'ring-2 ring-offset-2 ring-indigo-300' : 'opacity-40'}`}></button>
-                                                ))}
+                                        <div className="mt-8 text-left space-y-6">
+                                            <div>
+                                                <p className="text-[10px] font-black text-slate-400 mb-3 uppercase tracking-tighter">프로필 아이콘</p>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {['👤','😎','🔥','✨','🚀','💎','🍀','🦁'].map(e => (
+                                                        <button key={e} onClick={() => updateStudent(user.id, { profileEmoji: e })} className={`w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-xl hover:bg-slate-200 ${user.profileEmoji === e ? 'ring-2 ring-indigo-500 bg-white' : ''}`}>{e}</button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] font-black text-slate-400 mb-3 uppercase tracking-tighter">테마 컬러</p>
+                                                <div className="flex gap-2">
+                                                    {Object.keys(THEMES).map(t => (
+                                                        <button key={t} onClick={() => updateStudent(user.id, { theme: t })} className={`flex-1 h-8 rounded-lg ${THEMES[t].main} ${user.theme === t ? 'ring-2 ring-offset-2 ring-slate-300' : 'opacity-40'}`}></button>
+                                                    ))}
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -306,56 +312,84 @@
                         {view === 'bank' && (
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                 {products.map(p => (
-                                    <div key={p.id} className="bg-white p-8 rounded-[2.5rem] border-2 border-slate-100 flex flex-col justify-between">
+                                    <div key={p.id} className="bg-white p-8 rounded-[2.5rem] shadow-sm border-2 border-transparent hover:border-indigo-400 transition-all flex flex-col justify-between">
                                         <div>
-                                            <h4 className="text-xl font-black mb-2">{p.name}</h4>
-                                            <p className="text-xs text-slate-400 mb-6">{p.desc}</p>
+                                            <div className="flex justify-between items-start">
+                                                <h4 className="text-xl font-black mb-2 text-slate-800">{p.name}</h4>
+                                                {user.role === 'admin' && (
+                                                    <div className="flex gap-2">
+                                                        <button onClick={() => {
+                                                            const n = prompt('이름 수정', p.name);
+                                                            const r = prompt('이율 수정', p.rate);
+                                                            if(n && r) fb.setDoc(fb.doc(fb.db, 'artifacts', fb.appId, 'public', 'data', 'products', p.id), { ...p, name: n, rate: r });
+                                                        }} className="text-slate-300 hover:text-indigo-500"><i className="fas fa-edit"></i></button>
+                                                        <button onClick={() => fb.deleteDoc(fb.doc(fb.db, 'artifacts', fb.appId, 'public', 'data', 'products', p.id))} className="text-slate-300 hover:text-rose-500"><i className="fas fa-trash"></i></button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <p className="text-xs text-slate-400 mb-8 font-medium">{p.desc}</p>
                                         </div>
-                                        <div className="flex justify-between items-end mb-6">
-                                            <span className="text-4xl font-black">{p.rate}%</span>
-                                            <span className="text-[10px] font-bold text-slate-400 mb-1">수익률</span>
+                                        <div>
+                                            <div className="flex items-baseline gap-1 mb-6">
+                                                <span className="text-4xl font-black text-slate-800">{p.rate}</span>
+                                                <span className="text-lg font-black text-slate-300">%</span>
+                                            </div>
+                                            <button onClick={() => {
+                                                const amt = prompt('예치할 금액');
+                                                const v = parseInt(amt);
+                                                if(v && user.balance >= v) {
+                                                    const newSubs = [...(user.subscriptions||[]), {id:Date.now(), name:p.name, amount:v, date:new Date().toLocaleDateString()}];
+                                                    updateStudent(user.id, { balance: user.balance - v, subscriptions: newSubs });
+                                                    showToast('가입되었습니다.');
+                                                } else if (v > user.balance) showToast('잔액 부족', 'error');
+                                            }} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black hover:bg-indigo-600">가입하기</button>
                                         </div>
-                                        <button onClick={() => {
-                                            const amt = prompt('예치할 금액 입력');
-                                            const v = parseInt(amt);
-                                            if(!v || v <= 0 || user.balance < v) return showToast('잔액을 확인하세요.', 'error');
-                                            updateUser({ balance: user.balance - v, subscriptions: [...(user.subscriptions||[]), { id: Date.now(), name: p.name, amount: v, date: new Date().toLocaleDateString() }] });
-                                            showToast('예금 가입 완료!');
-                                        }} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black">가입하기</button>
                                     </div>
                                 ))}
-                                {products.length === 0 && <div className="col-span-full py-20 text-center text-slate-400 font-bold">운영 중인 상품이 없습니다.</div>}
+                                {user.role === 'admin' && (
+                                    <button onClick={() => {
+                                        const name = prompt('상품명');
+                                        const rate = prompt('이율(%)');
+                                        const desc = prompt('설명');
+                                        if(name && rate) {
+                                            const id = Date.now().toString();
+                                            fb.setDoc(fb.doc(fb.db, 'artifacts', fb.appId, 'public', 'data', 'products', id), { id, name, rate, desc });
+                                        }
+                                    }} className="border-4 border-dashed border-slate-200 rounded-[2.5rem] p-8 flex flex-col items-center justify-center text-slate-300 hover:text-indigo-400 transition-all min-h-[250px]">
+                                        <i className="fas fa-plus text-2xl mb-2"></i>
+                                        <span className="font-bold">금융 상품 추가</span>
+                                    </button>
+                                )}
                             </div>
                         )}
 
                         {view === 'admin' && user.role === 'admin' && (
-                            <div className="space-y-8">
-                                <div className="bg-white rounded-[2.5rem] p-10 shadow-sm">
-                                    <h3 className="text-2xl font-black mb-8">학생 명단 관리</h3>
-                                    <div className="grid grid-cols-3 sm:grid-cols-6 lg:grid-cols-8 gap-3 mb-8 max-h-60 overflow-y-auto no-scrollbar">
-                                        {students.filter(s => s.role !== 'admin').sort((a,b)=>a.id.localeCompare(b.id)).map(s => (
-                                            <button key={s.id} onClick={() => setSelectedIds(prev => prev.includes(s.id) ? prev.filter(i => i !== s.id) : [...prev, s.id])}
-                                                className={`p-3 rounded-2xl border-2 transition-all ${selectedIds.includes(s.id) ? 'border-indigo-600 bg-indigo-50' : 'border-slate-50 bg-white'}`}>
-                                                <p className="text-xs font-black">{s.name}</p>
-                                                <p className="text-[8px] font-bold text-slate-400">{s.balance}G</p>
-                                            </button>
-                                        ))}
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4 mb-4">
-                                        <input id="adm_amt" type="number" placeholder="금액" className="px-6 py-4 bg-slate-50 rounded-2xl font-bold outline-none" />
-                                        <input id="adm_reason" type="text" placeholder="지급/차감 사유" className="px-6 py-4 bg-slate-50 rounded-2xl font-bold outline-none" />
-                                    </div>
-                                    <div className="flex gap-4">
-                                        <button onClick={() => handleAction('issue', document.getElementById('adm_amt').value, document.getElementById('adm_reason').value)} className="flex-1 bg-emerald-500 text-white py-4 rounded-2xl font-black shadow-lg">일괄 지급</button>
-                                        <button onClick={() => handleAction('penalty', document.getElementById('adm_amt').value, document.getElementById('adm_reason').value)} className="flex-1 bg-rose-500 text-white py-4 rounded-2xl font-black shadow-lg">일괄 차감</button>
-                                    </div>
+                            <div className="bg-white rounded-[2.5rem] p-10 shadow-sm">
+                                <h3 className="text-2xl font-black text-slate-800 mb-8">학생 자산 관리</h3>
+                                <div className="grid grid-cols-3 sm:grid-cols-6 lg:grid-cols-8 gap-3 mb-10 max-h-96 overflow-y-auto no-scrollbar p-1">
+                                    {students.filter(s => s.role !== 'admin').sort((a,b)=>a.id.localeCompare(b.id)).map(s => (
+                                        <button key={s.id} onClick={() => setSelectedIds(prev => prev.includes(s.id) ? prev.filter(i => i !== s.id) : [...prev, s.id])}
+                                            className={`p-4 rounded-2xl border-2 text-center transition-all ${selectedIds.includes(s.id) ? 'border-indigo-600 bg-indigo-50' : 'border-slate-50 bg-white'}`}>
+                                            <p className="text-xs font-black text-slate-800">{s.name}</p>
+                                            <p className="text-[10px] font-bold text-slate-400 mt-1">{s.balance.toLocaleString()}G</p>
+                                        </button>
+                                    ))}
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                    <input id="adm_amt" type="number" placeholder="금액" className="px-6 py-4 bg-slate-50 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-indigo-400" />
+                                    <input id="adm_reason" type="text" placeholder="사유 (미입력 시 기본값)" className="px-6 py-4 bg-slate-50 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-indigo-400" />
+                                </div>
+                                <div className="flex gap-4">
+                                    <button onClick={() => handleBulkAction('issue', document.getElementById('adm_amt').value, document.getElementById('adm_reason').value)} className="flex-1 bg-emerald-500 text-white py-5 rounded-2xl font-black shadow-lg">지급</button>
+                                    <button onClick={() => handleBulkAction('penalty', document.getElementById('adm_amt').value, document.getElementById('adm_reason').value)} className="flex-1 bg-rose-500 text-white py-5 rounded-2xl font-black shadow-lg">차감</button>
                                 </div>
                             </div>
                         )}
                     </main>
 
                     {toast && (
-                        <div className={`fixed bottom-10 left-1/2 -translate-x-1/2 px-8 py-4 rounded-2xl text-white font-black shadow-2xl z-[100] ${toast.type === 'error' ? 'bg-rose-500' : 'bg-slate-900'}`}>
+                        <div className={`fixed bottom-10 left-1/2 -translate-x-1/2 px-8 py-4 rounded-2xl text-white font-black shadow-2xl z-[100] flex items-center gap-3 border border-white/20 ${toast.type === 'error' ? 'bg-rose-500' : 'bg-slate-900'}`}>
+                            <i className={`fas fa-${toast.type === 'error' ? 'exclamation-circle' : 'check-circle'}`}></i>
                             {toast.msg}
                         </div>
                     )}
@@ -363,8 +397,10 @@
             );
         };
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+        window.addEventListener('load', () => {
+            const root = window.ReactDOM.createRoot(document.getElementById('root'));
+            root.render(<App />);
+        });
     </script>
 </body>
 </html>
